@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Moving Sale</title>
+<style>
+  :root{
+    --bg:#eef1fb; --card:#fff; --text:#1a1a2e; --muted:#65667a; --border:#dfe3f5;
+    --accent:#6d5ef7; --accent-2:#14b8a6;
+    --sale:#16a34a; --free:#2563eb; --gone:#9a9a9a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);}
+  header{position:relative;padding:28px 20px 20px;text-align:center;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;box-shadow:0 2px 12px rgba(0,0,0,.15);}
+  header h1{margin:0 0 4px;font-size:1.7rem;}
+  header p{margin:0;color:rgba(255,255,255,.9);font-size:.95rem;}
+  .lang-toggle{position:absolute;top:14px;right:16px;display:flex;gap:4px;background:rgba(255,255,255,.2);border-radius:20px;padding:3px;}
+  html[dir="rtl"] .lang-toggle{right:auto;left:16px;}
+  .lang-toggle button{border:none;background:transparent;color:#fff;padding:5px 12px;border-radius:16px;font-size:.8rem;font-weight:600;cursor:pointer;}
+  .lang-toggle button.active{background:#fff;color:var(--accent);}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:12px 20px;}
+  .controls input[type=search]{flex:1 1 220px;max-width:320px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:.95rem;}
+  .controls input[type=number]{width:100px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:.95rem;}
+  .price-range{align-items:center;color:var(--muted);font-size:.85rem;}
+  .filters{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;}
+  .filters button{padding:7px 14px;border-radius:20px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:.85rem;}
+  .filters button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;padding:8px 20px 40px;max-width:1200px;margin:0 auto;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  .card img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--border);}
+  .card .body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:4px;flex:1;}
+  .card h3{margin:0;font-size:1.05rem;}
+  .card .cat{color:var(--accent);font-size:.8rem;font-weight:600;}
+  .card .desc{color:var(--muted);font-size:.85rem;margin-top:2px;}
+  .row{display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:8px;}
+  .price{font-weight:700;color:var(--accent);}
+  .badge{font-size:.72rem;font-weight:600;padding:3px 9px;border-radius:20px;color:#fff;text-transform:uppercase;letter-spacing:.03em;}
+  .badge.for-sale{background:var(--sale);}
+  .badge.free{background:var(--free);}
+  .badge.sold,.badge.given-away{background:var(--gone);}
+  .card.claimed{opacity:.55;}
+  .wa-btn{display:block;margin-top:8px;text-align:center;padding:8px;border-radius:8px;background:#25D366;color:#fff;font-size:.85rem;font-weight:600;text-decoration:none;}
+  #empty,#loading,#error{text-align:center;color:var(--muted);padding:40px 20px;}
+  #error{color:#c0392b;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="lang-toggle" id="langToggle">
+    <button data-lang="en">EN</button>
+    <button data-lang="he">עברית</button>
+  </div>
+  <h1 id="title">Moving Sale</h1>
+  <p id="subtitle">Everything must go. Message us for anything you'd like.</p>
+</header>
+
+<div class="controls">
+  <input type="search" id="search" placeholder="Search items...">
+</div>
+<div class="controls filters" id="statusFilters"></div>
+<div class="controls filters" id="categoryFilters"></div>
+<div class="controls price-range">
+  <span id="priceLabel">Price (₪):</span>
+  <input type="number" id="priceMin" min="0">
+  <span>&ndash;</span>
+  <input type="number" id="priceMax" min="0">
+</div>
+
+<div id="loading">Loading items…</div>
+<div id="error" style="display:none">Couldn't load the list. Check the SHEET_CSV_URL in index.html.</div>
+<div id="empty" style="display:none">No items match.</div>
+<div id="grid"></div>
+
+<script>
+// ponytail: Google Sheet published-to-web CSV is the entire database. No backend.
+// Set up: File > Share > Publish to web > choose the sheet tab > CSV > copy link.
+const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQAxZWivvHSeibbno0Yd1JLYMfrIfKNCkxnhjeIXd_iDPEgvLwucRUJLi5DniibgYvERiq6KUcoH3jX/pub?gid=0&single=true&output=csv";
+
+// WhatsApp number (with country code, no + or spaces) that "Message on WhatsApp" links to.
+const WHATSAPP_NUMBER = "9720585518225";
+
+const STATUSES = ["For Sale", "Free", "Sold", "Given Away"];
+
+// ponytail: fixed UI vocab is translated by hand here. Free-text item data (Item/Category/Description)
+// is translated by adding "Item (HE)" / "Category (HE)" / "Description (HE)" columns in the Sheet —
+// no translation API, no dependency, never breaks.
+const I18N = {
+  en: {
+    dir: "rtl-off",
+    title: "Moving Sale",
+    subtitle: "Everything must go. Message us for anything you'd like.",
+    searchPlaceholder: "Search items...",
+    priceLabel: "Price (₪):",
+    loading: "Loading items…",
+    error: "Couldn't load the list. Check the SHEET_CSV_URL in index.html.",
+    empty: "No items match.",
+    freePrice: "Free",
+    whatsapp: "Message on WhatsApp",
+    allStatuses: "All statuses",
+    allCategories: "All categories",
+    statusLabel: { "For Sale": "For Sale", "Free": "Free", "Sold": "Sold", "Given Away": "Given Away" },
+    waMessage: (name, priceText) => `Hi! I'm interested in "${name}"${priceText ? ` (${priceText})` : ""} from the moving sale. Is it still available?`,
+  },
+  he: {
+    dir: "rtl",
+    title: "מכירת מעבר דירה",
+    subtitle: "הכול צריך לצאת מהבית. תכתבו לנו על מה שמעניין אתכם.",
+    searchPlaceholder: "חיפוש פריטים...",
+    priceLabel: "מחיר (₪):",
+    loading: "טוען פריטים…",
+    error: "טעינת הרשימה נכשלה. בדקו את SHEET_CSV_URL בקובץ.",
+    empty: "לא נמצאו פריטים מתאימים.",
+    freePrice: "ללא תשלום",
+    whatsapp: "שליחת הודעה בוואטסאפ",
+    allStatuses: "כל הסטטוסים",
+    allCategories: "כל הקטגוריות",
+    statusLabel: { "For Sale": "למכירה", "Free": "ללא תשלום", "Sold": "נמכר", "Given Away": "נמסר" },
+    waMessage: (name, priceText) => `היי! מתעניין/ת ב"${name}"${priceText ? ` (${priceText})` : ""} ממכירת המעבר. זה עדיין קיים?`,
+  },
+};
+
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ""; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); field = "";
+        if (row.length > 1 || row[0] !== "") rows.push(row);
+        row = [];
+      } else field += c;
+    }
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  if (!rows.length) return [];
+  const headers = rows[0].map(h => h.trim());
+  return rows.slice(1).filter(r => r.some(v => v.trim() !== "")).map(r => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = (r[i] || "").trim());
+    return obj;
+  });
+}
+
+// ponytail: hand-rolled fuzzy match (subsequence match per query word) instead of a fuzzy-search library
+function isSubsequence(needle, haystack) {
+  let i = 0;
+  for (let j = 0; j < haystack.length && i < needle.length; j++) {
+    if (haystack[j] === needle[i]) i++;
+  }
+  return i === needle.length;
+}
+function fuzzyMatch(query, text) {
+  const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = text.toLowerCase();
+  return words.every(w => isSubsequence(w, hay));
+}
+
+// Displayed text for an item field: falls back to the English column if no "(HE)" translation is filled in.
+function localField(it, lang, field) {
+  if (lang === "he") return it[`${field} (HE)`] || it[field] || "";
+  return it[field] || "";
+}
+
+function whatsappLink(it, lang) {
+  const t = I18N[lang];
+  const name = localField(it, lang, "Item");
+  const priceText = it.Status === "Free" ? t.freePrice : (it.Price ? `₪${it.Price}` : "");
+  const msg = t.waMessage(name, priceText);
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
+}
+
+function render(items, filters, lang) {
+  const t = I18N[lang];
+  const grid = document.getElementById("grid");
+  const empty = document.getElementById("empty");
+  const min = filters.priceMin === "" ? null : parseFloat(filters.priceMin);
+  const max = filters.priceMax === "" ? null : parseFloat(filters.priceMax);
+  const filtered = items.filter(it => {
+    if (filters.status !== "All" && it.Status !== filters.status) return false;
+    if (filters.category !== "All" && it.Category !== filters.category) return false;
+    const price = parseFloat(it.Price);
+    if (!isNaN(price)) {
+      if (min !== null && price < min) return false;
+      if (max !== null && price > max) return false;
+    }
+    if (!fuzzyMatch(filters.query, `${it.Item} ${it.Category} ${it.Description} ${localField(it, lang, "Item")} ${localField(it, lang, "Category")} ${localField(it, lang, "Description")}`)) return false;
+    return true;
+  });
+  grid.innerHTML = "";
+  empty.style.display = filtered.length ? "none" : "block";
+  filtered.forEach(it => {
+    const claimed = it.Status === "Sold" || it.Status === "Given Away";
+    const card = document.createElement("div");
+    card.className = "card" + (claimed ? " claimed" : "");
+    const statusClass = it.Status.toLowerCase().replace(/\s+/g, "-");
+    const name = localField(it, lang, "Item") || "Untitled";
+    const category = localField(it, lang, "Category");
+    const description = localField(it, lang, "Description");
+    card.innerHTML = `
+      ${it["Photo URL"] ? `<img src="${it["Photo URL"]}" alt="${name}" loading="lazy">` : ""}
+      <div class="body">
+        <h3>${name}</h3>
+        ${category ? `<div class="cat">${category}</div>` : ""}
+        ${description ? `<div class="desc">${description}</div>` : ""}
+        <div class="row">
+          <span class="price">${it.Status === "Free" ? t.freePrice : (it.Price ? "₪" + it.Price : "")}</span>
+          <span class="badge ${statusClass}">${t.statusLabel[it.Status] || it.Status || ""}</span>
+        </div>
+        ${claimed ? "" : `<a class="wa-btn" href="${whatsappLink(it, lang)}" target="_blank" rel="noopener">${t.whatsapp}</a>`}
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+function buildFilterBar(containerId, allLabel, values, counts, labelFor, onChange) {
+  const bar = document.getElementById(containerId);
+  bar.innerHTML = "";
+  let active = "All";
+  ["All", ...values].forEach(value => {
+    if (value !== "All" && !counts[value]) return;
+    const btn = document.createElement("button");
+    btn.textContent = value === "All" ? `${allLabel} (${counts.All})` : `${labelFor(value)} (${counts[value]})`;
+    if (value === "All") btn.classList.add("active");
+    btn.onclick = () => {
+      active = value;
+      [...bar.children].forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      onChange(active);
+    };
+    bar.appendChild(btn);
+  });
+  return () => active;
+}
+
+async function init() {
+  const loading = document.getElementById("loading");
+  const error = document.getElementById("error");
+  const search = document.getElementById("search");
+  const priceMin = document.getElementById("priceMin");
+  const priceMax = document.getElementById("priceMax");
+
+  let lang = localStorage.getItem("moving-sale-lang") || "en";
+
+  function applyStaticText() {
+    const t = I18N[lang];
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === "he" ? "rtl" : "ltr";
+    document.getElementById("title").textContent = t.title;
+    document.getElementById("subtitle").textContent = t.subtitle;
+    search.placeholder = t.searchPlaceholder;
+    document.getElementById("priceLabel").textContent = t.priceLabel;
+    loading.textContent = t.loading;
+    error.textContent = t.error;
+    document.getElementById("empty").textContent = t.empty;
+    [...document.querySelectorAll("#langToggle button")].forEach(b =>
+      b.classList.toggle("active", b.dataset.lang === lang));
+  }
+  applyStaticText();
+
+  try {
+    const res = await fetch(SHEET_CSV_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error("bad response");
+    const items = parseCSV(await res.text());
+    loading.style.display = "none";
+
+    const statusCounts = { All: items.length };
+    STATUSES.forEach(s => statusCounts[s] = items.filter(i => i.Status === s).length);
+    const categories = [...new Set(items.map(i => i.Category).filter(Boolean))].sort();
+    const categoryCounts = { All: items.length };
+    categories.forEach(c => categoryCounts[c] = items.filter(i => i.Category === c).length);
+    // Category filter buttons show the (HE) translation from the first item that has one, English otherwise.
+    const categoryLabel = c => {
+      const t = I18N[lang];
+      if (lang !== "he") return c;
+      const withHe = items.find(i => i.Category === c && i["Category (HE)"]);
+      return withHe ? withHe["Category (HE)"] : c;
+    };
+
+    let getStatus = () => "All";
+    let getCategory = () => "All";
+    const rerender = () => render(items, {
+      status: getStatus(),
+      category: getCategory(),
+      query: search.value,
+      priceMin: priceMin.value,
+      priceMax: priceMax.value,
+    }, lang);
+
+    function rebuildFilters() {
+      const t = I18N[lang];
+      const prevStatus = getStatus ? getStatus() : "All";
+      const prevCategory = getCategory ? getCategory() : "All";
+      getStatus = buildFilterBar("statusFilters", t.allStatuses, STATUSES, statusCounts, s => t.statusLabel[s] || s, rerender);
+      getCategory = buildFilterBar("categoryFilters", t.allCategories, categories, categoryCounts, categoryLabel, rerender);
+      rerender();
+    }
+    rebuildFilters();
+
+    search.oninput = rerender;
+    priceMin.oninput = rerender;
+    priceMax.oninput = rerender;
+
+    document.getElementById("langToggle").onclick = (e) => {
+      const btn = e.target.closest("button[data-lang]");
+      if (!btn || btn.dataset.lang === lang) return;
+      lang = btn.dataset.lang;
+      localStorage.setItem("moving-sale-lang", lang);
+      applyStaticText();
+      rebuildFilters();
+    };
+  } catch (e) {
+    loading.style.display = "none";
+    error.style.display = "block";
+    console.error(e);
+  }
+}
+
+// ponytail: smallest self-check for the hand-rolled CSV parser (no test framework needed)
+(function selfTestParseCSV() {
+  const sample = 'Item,Price\n"Desk, Oak",50\n"Lamp ""tall""",10\n';
+  const out = parseCSV(sample);
+  console.assert(out.length === 2, "parseCSV: expected 2 rows", out);
+  console.assert(out[0].Item === "Desk, Oak" && out[0].Price === "50", "parseCSV: quoted comma failed", out[0]);
+  console.assert(out[1].Item === 'Lamp "tall"', "parseCSV: escaped quote failed", out[1]);
+})();
+
+(function selfTestFuzzyMatch() {
+  console.assert(fuzzyMatch("dsk oak", "Desk, Oak table") === true, "fuzzyMatch: subsequence should match");
+  console.assert(fuzzyMatch("lamp", "Dutch Oven") === false, "fuzzyMatch: unrelated text should not match");
+  console.assert(fuzzyMatch("", "anything") === true, "fuzzyMatch: empty query matches everything");
+})();
+
+(function selfTestLocalField() {
+  const withHe = { Item: "Lamp", "Item (HE)": "מנורה" };
+  const withoutHe = { Item: "Chair" };
+  console.assert(localField(withHe, "he", "Item") === "מנורה", "localField: should prefer HE column");
+  console.assert(localField(withoutHe, "he", "Item") === "Chair", "localField: should fall back to English");
+  console.assert(localField(withHe, "en", "Item") === "Lamp", "localField: English lang should ignore HE column");
+})();
+
+init();
+</script>
+</body>
+</html>
