@@ -34,6 +34,7 @@
 <div id="error" style="display:none">Couldn't load the list. Check the SHEET_CSV_URL in index.html.</div>
 <div id="empty" style="display:none">No items match.</div>
 <div id="grid"></div>
+<dialog id="imgDialog"><img id="imgDialogPhoto" alt=""></dialog>
 
 <script>
 // ponytail: Google Sheet published-to-web CSV is the entire database. No backend.
@@ -173,7 +174,7 @@ function render(items, filters, lang) {
     const category = localField(it, lang, "Category");
     const description = localField(it, lang, "Description");
     card.innerHTML = `
-      ${it["Photo URL"] ? `<img src="${it["Photo URL"]}" alt="${name}" loading="lazy">` : ""}
+      ${it["Photo URL"] ? `<img src="${it["Photo URL"]}" alt="${name}" loading="lazy" class="thumb">` : ""}
       <div class="body">
         <h3>${name}</h3>
         ${category ? `<div class="cat">${category}</div>` : ""}
@@ -187,6 +188,14 @@ function render(items, filters, lang) {
     grid.appendChild(card);
   });
 }
+
+// Click a card's photo to open it enlarged in a native <dialog>; click anywhere to close.
+document.getElementById("grid").addEventListener("click", e => {
+  if (!e.target.classList.contains("thumb")) return;
+  document.getElementById("imgDialogPhoto").src = e.target.src;
+  document.getElementById("imgDialog").showModal();
+});
+document.getElementById("imgDialog").addEventListener("click", e => e.currentTarget.close());
 
 function buildFilterBar(containerId, allLabel, values, counts, labelFor, onChange) {
   const bar = document.getElementById(containerId);
@@ -238,7 +247,7 @@ async function init() {
     const res = await fetch(SHEET_CSV_URL, { cache: "no-store" });
     if (!res.ok) throw new Error("bad response");
     // "Inactive" items are hidden entirely — not counted, not filterable, not rendered.
-    const items = parseCSV(await res.text()).filter(it => it.Status !== "Inactive");
+    const items = parseCSV(await res.text()).filter(it => it.Status !== "Inactive" && it.Item);
     loading.style.display = "none";
 
     const statusCounts = { All: items.length };

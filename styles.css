@@ -29,6 +29,10 @@ header p{margin:0;color:rgba(255,255,255,.9);font-size:.95rem;}
    these put the actual text direction back so Hebrew content still reads correctly inside them. */
 html[dir="rtl"] .card,html[dir="rtl"] .filters button,html[dir="rtl"] .controls input,html[dir="rtl"] .controls span{direction:rtl;}
 .card img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--border);}
+.card img.thumb{cursor:zoom-in;}
+#imgDialog{padding:0;border:none;border-radius:8px;background:transparent;max-width:90vw;max-height:90vh;}
+#imgDialog img{display:block;max-width:90vw;max-height:90vh;cursor:zoom-out;}
+#imgDialog::backdrop{background:rgba(0,0,0,.7);}
 .card .body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:4px;flex:1;}
 .card h3{margin:0;font-size:1.05rem;}
 .card .cat{color:var(--accent);font-size:.8rem;font-weight:600;}
