@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Moving Sale — Pickup Info</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+
+<header>
+  <a class="nav-link" id="backLink" href="index.html">Back to listings</a>
+  <div class="lang-toggle" id="langToggle">
+    <button data-lang="en">EN</button>
+    <button data-lang="he">עברית</button>
+  </div>
+  <h1 id="title">Pickup Info</h1>
+  <p id="subtitle">Approximate areas — exact address shared once we've coordinated.</p>
+</header>
+
+<main class="info">
+  <div class="spot">
+    <h2 id="homeTitle">Home (most items)</h2>
+    <p id="homeDesc">Ramat Gan, near Sderot HaTzanhanim.</p>
+    <div class="map" id="mapHome"></div>
+  </div>
+  <div class="spot">
+    <h2 id="officeTitle">Office (small items only)</h2>
+    <p id="officeDesc">Tel Aviv, near Sderot Yehudit. Small items can be picked up here — coordinate with us first.</p>
+    <div class="map" id="mapOffice"></div>
+  </div>
+  <div class="note" id="note">
+    These are approximate areas, not exact addresses. Message us on WhatsApp from any item's listing to coordinate a pickup time and get the exact location.
+  </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const I18N = {
+  en: {
+    title: "Pickup Info",
+    subtitle: "Approximate areas — exact address shared once we've coordinated.",
+    backLink: "Back to listings",
+    homeTitle: "Home (most items)",
+    homeDesc: "Ramat Gan, near Sderot HaTzanhanim.",
+    officeTitle: "Office (small items only)",
+    officeDesc: "Tel Aviv, near Sderot Yehudit. Small items can be picked up here — coordinate with us first.",
+    note: "These are approximate areas, not exact addresses. Message us on WhatsApp from any item's listing to coordinate a pickup time and get the exact location.",
+  },
+  he: {
+    title: "מידע על איסוף",
+    subtitle: "אזורים משוערים — הכתובת המדויקת תישלח לאחר תיאום.",
+    backLink: "חזרה לרשימת הפריטים",
+    homeTitle: "הבית (רוב הפריטים)",
+    homeDesc: "רמת גן, סמוך לשדרות הצנחנים.",
+    officeTitle: "המשרד (פריטים קטנים בלבד)",
+    officeDesc: "תל אביב, סמוך לשדרות יהודית. איסוף פריטים קטנים אפשרי מכאן — בתיאום מראש.",
+    note: "אלו אזורים משוערים, לא כתובות מדויקות. שלחו לנו הודעה בוואטסאפ מתוך כל פריט כדי לתאם מועד איסוף ולקבל את המיקום המדויק.",
+  },
+};
+
+// ponytail: approximate, not exact — coordinates are nudged off the real address (like Airbnb's
+// area circle) so the map shows "roughly here" without pinpointing the house/office.
+const SPOTS = [
+  { mapId: "mapHome", center: [32.0678, 34.8245], radius: 400 },
+  { mapId: "mapOffice", center: [32.0720, 34.7914], radius: 400 },
+];
+
+function initMap(spot) {
+  const map = L.map(spot.mapId, { scrollWheelZoom: false }).setView(spot.center, 14);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 18,
+  }).addTo(map);
+  L.circle(spot.center, {
+    radius: spot.radius,
+    color: "#6d5ef7",
+    fillColor: "#6d5ef7",
+    fillOpacity: 0.25,
+    weight: 2,
+  }).addTo(map);
+  map.fitBounds(L.circle(spot.center, { radius: spot.radius }).getBounds(), { padding: [10, 10] });
+}
+
+function applyLang(lang) {
+  const t = I18N[lang];
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === "he" ? "rtl" : "ltr";
+  document.getElementById("title").textContent = t.title;
+  document.getElementById("subtitle").textContent = t.subtitle;
+  document.getElementById("backLink").textContent = t.backLink;
+  document.getElementById("homeTitle").textContent = t.homeTitle;
+  document.getElementById("homeDesc").textContent = t.homeDesc;
+  document.getElementById("officeTitle").textContent = t.officeTitle;
+  document.getElementById("officeDesc").textContent = t.officeDesc;
+  document.getElementById("note").textContent = t.note;
+  [...document.querySelectorAll("#langToggle button")].forEach(b =>
+    b.classList.toggle("active", b.dataset.lang === lang));
+}
+
+let lang = localStorage.getItem("moving-sale-lang") || "en";
+applyLang(lang);
+document.getElementById("langToggle").onclick = (e) => {
+  const btn = e.target.closest("button[data-lang]");
+  if (!btn || btn.dataset.lang === lang) return;
+  lang = btn.dataset.lang;
+  localStorage.setItem("moving-sale-lang", lang);
+  applyLang(lang);
+};
+
+SPOTS.forEach(initMap);
+</script>
+</body>
+</html>

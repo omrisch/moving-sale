@@ -1,41 +1,70 @@
 # Moving Sale
 
-Static page. Google Sheet is the database. Edit the sheet, page updates.
+Static site. Google Sheet is the database — edit the sheet, the site updates. No backend, no build step.
 
-## Setup (5 min)
+Live at: **https://omrisch.github.io/moving-sale/**
+Repo: **https://github.com/omrisch/moving-sale**
 
-1. Make a Google Sheet with these column headers in row 1:
+## Files
+
+- `index.html` — the item listing (search, filters, WhatsApp contact)
+- `info.html` — pickup logistics page (approximate location maps)
+- `styles.css` — shared styling for both pages
+
+## Sheet setup
+
+1. Google Sheet, row 1 headers:
 
    `Item | Category | Price | Status | Photo URL | Description`
 
-   - `Status` must be one of: `For Sale`, `Free`, `Sold`, `Given Away`
+   Optional Hebrew translation columns (leave blank to fall back to English):
+
+   `Item (HE) | Category (HE) | Description (HE)`
+
+   - `Status` must be one of: `For Sale`, `Free`, `Sold`, `Given Away`, `Inactive`
+     - `Sold` / `Given Away` still show on the site, grayed out, no WhatsApp button.
+     - `Inactive` is fully hidden — not shown, not counted, not filterable. Use it for items not ready to list yet.
    - `Photo URL`: upload photo to Google Drive/Photos (or anywhere), get a public link, paste it
-   - `Price`: number only, leave blank if Free
+   - `Price`: number only (₪), leave blank if Free
 
 2. **File → Share → Publish to web** → pick the sheet tab → format **CSV** → Publish → copy the link.
 
-3. Open `index.html`, find this line near the top of the `<script>`:
+3. In `index.html`, near the top of the `<script>`:
 
    ```js
-   const SHEET_CSV_URL = "PASTE_YOUR_PUBLISHED_CSV_LINK_HERE";
+   const SHEET_CSV_URL = "...";
    ```
 
-   Replace with the link you copied.
+   already set to the published link. Only touch this if you republish under a different link.
 
-4. Open `index.html` in a browser to check it. If `fetch` fails locally, run a tiny local server:
+## Updating the live site
 
-   ```
-   cd tools/moving-sale && python3 -m http.server 8000
-   ```
-   then visit `http://localhost:8000`.
+```
+git add -A
+git commit -m "describe the change"
+git push
+```
 
-## Share it with buyers
+GitHub Pages redeploys automatically after a push (usually live within ~1 min).
 
-Push this folder to a free static host, e.g. **GitHub Pages** or drag the folder into **Netlify Drop** (netlify.com/drop). You get a public URL to send around. No further deploys needed — the page always pulls live from the Sheet.
+## Local preview
+
+```
+cd tools/moving-sale && python3 -m http.server 8000
+```
+then visit `http://localhost:8000`.
+
+## Features
+
+- **Search** — fuzzy (typo/partial-tolerant), matches item/category/description in both languages.
+- **Filters** — status, category (auto-built from the sheet), price range (₪ min/max).
+- **Language toggle** (EN / עברית, top-right) — switches UI text and, if filled in, the `(HE)` columns; saved per-browser via localStorage. Switches the page to RTL in Hebrew.
+- **WhatsApp button** per item, pre-filled with the item name + price, sent to the shared number in `WHATSAPP_NUMBER` (near the top of `index.html`'s script). Hidden on Sold/Given Away items.
+- **Pickup info page** (`info.html`, linked from the header) — two maps (home / office) showing an approximate circle, not an exact pin, à la Airbnb. Coordinates are intentionally offset from the real address — see the `SPOTS` constant in `info.html` if you need to adjust them. Exact address is only shared once you've coordinated over WhatsApp.
 
 ## You + your wife organizing
 
-Just edit the same Google Sheet together (Sheets supports simultaneous editing). The site is read-only — it reflects whatever's in the sheet.
+Edit the same Google Sheet together (Sheets supports simultaneous editing). The site is read-only — it always reflects whatever's currently in the sheet.
 
-- skipped: photo upload UI — you paste an already-hosted image link instead. Add an upload flow only if pasting links gets annoying.
-- skipped: contact/inquiry form — page is browse-only for now. Add a mailto/WhatsApp link per item if buyers need a direct way to reach you.
+- skipped: photo upload UI — paste an already-hosted image link instead. Add an upload flow only if pasting links gets annoying.
+- skipped: automatic address reveal — pickup address is exchanged manually over WhatsApp, not published on the site, by design.
