@@ -191,10 +191,20 @@ function render(items, filters, lang) {
 
 // Click a card's photo to open it enlarged in a native <dialog>; click anywhere to close.
 document.getElementById("grid").addEventListener("click", e => {
-  if (!e.target.classList.contains("thumb")) return;
-  document.getElementById("imgDialogPhoto").src = e.target.src;
-  document.getElementById("imgDialog").showModal();
+  if (e.target.classList.contains("thumb")) {
+    document.getElementById("imgDialogPhoto").src = e.target.src;
+    document.getElementById("imgDialog").showModal();
+    return;
+  }
+  // ponytail: global cooldown, not per-button — deters rapid repeat WhatsApp clicks, not real spam
+  if (e.target.classList.contains("wa-btn")) {
+    const now = Date.now();
+    if (now - lastWaClick < WA_COOLDOWN_MS) { e.preventDefault(); return; }
+    lastWaClick = now;
+  }
 });
+let lastWaClick = 0;
+const WA_COOLDOWN_MS = 3000;
 document.getElementById("imgDialog").addEventListener("click", e => e.currentTarget.close());
 
 function buildFilterBar(containerId, allLabel, values, counts, labelFor, onChange) {
