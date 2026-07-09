@@ -9,7 +9,7 @@ header{position:relative;padding:28px 20px 20px;text-align:center;background:lin
 header h1{margin:0 0 4px;font-size:1.7rem;}
 header p{margin:0;color:rgba(255,255,255,.9);font-size:.95rem;}
 /* Fixed corners regardless of language/direction — toggling EN/HE must not move these. */
-.lang-toggle{position:absolute;top:14px;right:16px;display:flex;gap:4px;background:rgba(255,255,255,.2);border-radius:20px;padding:3px;}
+.lang-toggle{position:absolute;top:14px;right:16px;display:flex;direction:ltr;gap:4px;background:rgba(255,255,255,.2);border-radius:20px;padding:3px;}
 .lang-toggle button{border:none;background:transparent;color:#fff;padding:5px 12px;border-radius:16px;font-size:.8rem;font-weight:600;cursor:pointer;}
 .lang-toggle button.active{background:#fff;color:var(--accent);}
 .nav-link{position:absolute;top:16px;left:16px;color:#fff;text-decoration:none;font-size:.85rem;font-weight:600;background:rgba(255,255,255,.2);padding:6px 14px;border-radius:16px;}
