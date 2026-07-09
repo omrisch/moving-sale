@@ -73,14 +73,14 @@ function initMap(spot) {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 18,
   }).addTo(map);
-  L.circle(spot.center, {
+  const circle = L.circle(spot.center, {
     radius: spot.radius,
     color: "#6d5ef7",
     fillColor: "#6d5ef7",
     fillOpacity: 0.25,
     weight: 2,
   }).addTo(map);
-  map.fitBounds(L.circle(spot.center, { radius: spot.radius }).getBounds(), { padding: [10, 10] });
+  map.fitBounds(circle.getBounds(), { padding: [10, 10] });
 }
 
 function applyLang(lang) {
