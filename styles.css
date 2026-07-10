@@ -20,7 +20,7 @@ header p{margin:0;color:rgba(255,255,255,.9);font-size:.95rem;}
    corner-stable lang-toggle/nav-link: direction:ltr on the container, text direction
    restored on descendants below for RTL. */
 .layout{display:flex;direction:ltr;align-items:flex-start;gap:24px;max-width:1400px;margin:0 auto;padding:0 20px;}
-.sidebar{flex:0 0 240px;display:flex;flex-direction:column;gap:10px;padding:16px 0;position:sticky;top:12px;}
+.sidebar{flex:0 0 240px;display:flex;flex-direction:column;gap:10px;padding:16px 8px 16px 0;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow-y:auto;font-size:.85rem;}
 .content{flex:1;min-width:0;}
 .controls{display:flex;direction:ltr;flex-wrap:wrap;gap:8px;justify-content:center;padding:12px 20px;}
 .sidebar .controls{justify-content:flex-start;padding:0;}
@@ -33,12 +33,12 @@ header p{margin:0;color:rgba(255,255,255,.9);font-size:.95rem;}
 .sidebar .price-range{flex-direction:column;align-items:flex-start;width:100%;}
 .filters{display:flex;direction:ltr;gap:6px;flex-wrap:wrap;justify-content:center;}
 .sidebar .filters{justify-content:flex-start;}
-.filters button{padding:7px 14px;border-radius:20px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:.85rem;}
+.filters button{padding:5px 10px;border-radius:16px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:.78rem;}
 .filters button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
 #grid{display:grid;direction:ltr;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;padding:8px 0 40px;}
 @media (max-width:760px){
   .layout{flex-direction:column;}
-  .sidebar{position:static;width:100%;flex:none;}
+  .sidebar{position:static;width:100%;flex:none;max-height:none;overflow-y:visible;}
 }
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 3px rgba(0,0,0,.08);direction:ltr;}
 /* #grid/.filters/.controls force direction:ltr so item/button order stays fixed across languages;
