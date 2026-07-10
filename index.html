@@ -18,35 +18,42 @@
   <p id="subtitle">Everything must go. Message us for anything you'd like.</p>
 </header>
 
-<div class="controls">
-  <input type="search" id="search" placeholder="Search items...">
+<div class="layout">
+  <aside class="sidebar">
+    <div class="controls">
+      <input type="search" id="search" placeholder="Search items...">
+    </div>
+    <div class="controls filters" id="statusFilters"></div>
+    <div class="controls filters" id="categoryFilters"></div>
+    <div class="controls filters" id="roomFilters"></div>
+    <div class="controls price-range">
+      <span id="priceLabel">Price (₪):</span>
+      <input type="number" id="priceMin" min="0">
+      <span>&ndash;</span>
+      <input type="number" id="priceMax" min="0">
+    </div>
+    <div class="controls price-range">
+      <span id="dateLabel">Available by:</span>
+      <input type="date" id="dateMax">
+    </div>
+    <div class="controls price-range">
+      <span id="sortLabel">Sort:</span>
+      <select id="sortSelect">
+        <option value="default" id="sortDefault">Default</option>
+        <option value="name" id="sortName">Name (A→Z)</option>
+        <option value="date" id="sortDate">Date (soonest)</option>
+        <option value="room" id="sortRoom">Room (A→Z)</option>
+      </select>
+    </div>
+  </aside>
+  <main class="content">
+    <div id="loading"><div class="spinner"></div><span id="loadingText">Loading items…</span></div>
+    <div id="error" style="display:none">Couldn't load the list. Check the SHEET_CSV_URL in index.html.</div>
+    <div id="empty" style="display:none">No items match.</div>
+    <div id="grid"></div>
+    <div id="scrollSentinel"></div>
+  </main>
 </div>
-<div class="controls filters" id="statusFilters"></div>
-<div class="controls filters" id="categoryFilters"></div>
-<div class="controls filters" id="roomFilters"></div>
-<div class="controls price-range">
-  <span id="priceLabel">Price (₪):</span>
-  <input type="number" id="priceMin" min="0">
-  <span>&ndash;</span>
-  <input type="number" id="priceMax" min="0">
-</div>
-<div class="controls price-range">
-  <span id="dateLabel">Available by:</span>
-  <input type="date" id="dateMax">
-  <span id="sortLabel">Sort:</span>
-  <select id="sortSelect">
-    <option value="default" id="sortDefault">Default</option>
-    <option value="name" id="sortName">Name (A→Z)</option>
-    <option value="date" id="sortDate">Date (soonest)</option>
-    <option value="room" id="sortRoom">Room (A→Z)</option>
-  </select>
-</div>
-
-<div id="loading">Loading items…</div>
-<div id="error" style="display:none">Couldn't load the list. Check the SHEET_CSV_URL in index.html.</div>
-<div id="empty" style="display:none">No items match.</div>
-<div id="grid"></div>
-<div id="scrollSentinel"></div>
 <dialog id="imgDialog"><img id="imgDialogPhoto" alt=""></dialog>
 
 <script>
@@ -86,7 +93,7 @@ const I18N = {
     sortName: "Name (A→Z)",
     sortDate: "Date (soonest)",
     sortRoom: "Room (A→Z)",
-    linkToItem: "Link to item",
+    linkToItem: "More info",
     waMessage: (name, priceText) => `Hi! I'm interested in "${name}"${priceText ? ` (${priceText})` : ""} from the moving sale. Is it still available?`,
   },
   he: {
@@ -112,7 +119,7 @@ const I18N = {
     sortName: "שם (א-ת)",
     sortDate: "תאריך (הקרוב ביותר)",
     sortRoom: "חדר (א-ת)",
-    linkToItem: "קישור לפריט",
+    linkToItem: "מידע נוסף",
     waMessage: (name, priceText) => `היי! מתעניין/ת ב"${name}"${priceText ? ` (${priceText})` : ""} ממכירת המעבר. זה עדיין קיים?`,
   },
 };
@@ -156,17 +163,37 @@ function isSubsequence(needle, haystack) {
   }
   return i === needle.length;
 }
+// Each query word must be a subsequence of a single haystack token (not spanning across words) —
+// matching against the whole concatenated haystack let letters from unrelated adjacent fields
+// (and long URLs) accidentally line up into false positives.
 function fuzzyMatch(query, text) {
   const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  const hay = text.toLowerCase();
-  return words.every(w => isSubsequence(w, hay));
+  const tokens = text.toLowerCase().split(/\s+/).filter(Boolean);
+  return words.every(w => tokens.some(tok => isSubsequence(w, tok)));
+}
+
+// (HE) columns are often filled via a live GOOGLETRANSLATE() formula in the sheet — while it's still
+// resolving (or on a translation error), the cell can hold literal "Loading..." or "#VALUE!"/"#N/A"
+// instead of real text. Treat those as absent so buyers never see the raw formula state.
+function isTranslatePlaceholder(v) {
+  return !v || v === "Loading..." || /^#[A-Z/]+!?$/.test(v);
 }
 
 // Displayed text for an item field: falls back to the English column if no "(HE)" translation is filled in.
 function localField(it, lang, field) {
-  if (lang === "he") return it[`${field} (HE)`] || it[field] || "";
+  if (lang === "he") {
+    const he = it[`${field} (HE)`];
+    if (!isTranslatePlaceholder(he)) return he;
+  }
   return it[field] || "";
+}
+
+// Strips a trailing product URL out of Description text before it's used as search haystack —
+// otherwise the subsequence fuzzy matcher below spuriously matches short queries against the long
+// URL itself (e.g. "guitar" is a subsequence of almost any 80-char URL).
+function stripUrl(desc) {
+  return desc.replace(/https?:\/\/\S+/g, "");
 }
 
 // Description free text may end with a plain URL (original retailer link, pasted from research) —
@@ -190,14 +217,26 @@ function whatsappLink(it, lang) {
 
 // ponytail: Date column is free text; parsed with new Date() so ISO ("2026-08-01") sorts/filters
 // reliably. Unparseable or blank dates just opt the item out of date filtering/badges/sort-to-top.
+// Sorting/filtering always uses the English Date column — "Date (HE)" is display-only.
 function parseItemDate(it) {
   if (!it.Date) return null;
   const d = new Date(it.Date);
   return isNaN(d.getTime()) ? null : d;
 }
 
+// Optional "Status (HE)"/"Date (HE)" columns override the fixed I18N status label / raw date
+// string for Hebrew display, same fallback-to-English pattern as localField().
+function localStatus(it, lang) {
+  if (lang === "he" && !isTranslatePlaceholder(it["Status (HE)"])) return it["Status (HE)"];
+  return I18N[lang].statusLabel[it.Status] || it.Status || "";
+}
+function localDate(it, lang) {
+  if (lang === "he" && !isTranslatePlaceholder(it["Date (HE)"])) return it["Date (HE)"];
+  return it.Date;
+}
+
 // ponytail: render in batches on scroll instead of all ~50 cards (+ their images) at once
-const BATCH_SIZE = 12;
+const BATCH_SIZE = 8;
 const renderState = { filtered: [], shown: 0, lang: "en" };
 
 function buildCard(it, lang) {
@@ -217,9 +256,9 @@ function buildCard(it, lang) {
       ${description ? `<div class="desc">${formatDescription(description, lang)}</div>` : ""}
       <div class="row">
         <span class="price">${it.Status === "Free" ? t.freePrice : (it.Price ? "₪" + it.Price : "")}</span>
-        <span class="badge ${statusClass}">${t.statusLabel[it.Status] || it.Status || ""}</span>
+        ${it.Status === "Available Soon" && it.Date ? "" : `<span class="badge ${statusClass}">${localStatus(it, lang)}</span>`}
       </div>
-      ${it.Date ? `<span class="badge available-soon">${t.availableFrom(it.Date)}</span>` : ""}
+      ${it.Date ? `<span class="badge available-soon">${t.availableFrom(localDate(it, lang))}</span>` : ""}
       ${claimed ? "" : `<a class="wa-btn" href="${whatsappLink(it, lang)}" target="_blank" rel="noopener">${t.whatsapp}</a>`}
     </div>`;
   return card;
@@ -242,8 +281,9 @@ function render(items, filters, lang) {
     if (filters.status !== "All" && it.Status !== filters.status) return false;
     if (filters.category !== "All" && it.Category !== filters.category) return false;
     if (filters.room !== "All" && it.Room !== filters.room) return false;
-    const price = parseFloat(it.Price);
-    if (!isNaN(price)) {
+    if (min !== null || max !== null) {
+      const price = parseFloat(it.Price);
+      if (isNaN(price)) return false;
       if (min !== null && price < min) return false;
       if (max !== null && price > max) return false;
     }
@@ -251,13 +291,14 @@ function render(items, filters, lang) {
       const itemDate = parseItemDate(it);
       if (itemDate && itemDate > dateMax) return false;
     }
-    if (!fuzzyMatch(filters.query, `${it.Item} ${it.Category} ${it.Description} ${localField(it, lang, "Item")} ${localField(it, lang, "Category")} ${localField(it, lang, "Description")}`)) return false;
+    if (!fuzzyMatch(filters.query, `${it.Item} ${it.Category} ${stripUrl(it.Description)} ${localField(it, lang, "Item")} ${localField(it, lang, "Category")} ${stripUrl(localField(it, lang, "Description"))}`)) return false;
     return true;
   });
   if (filters.sort === "name") {
     filtered.sort((a, b) => localField(a, lang, "Item").localeCompare(localField(b, lang, "Item")));
   } else if (filters.sort === "date") {
-    filtered.sort((a, b) => (parseItemDate(a)?.getTime() ?? Infinity) - (parseItemDate(b)?.getTime() ?? Infinity));
+    // No date = already available now, so it sorts first (soonest), not last.
+    filtered.sort((a, b) => (parseItemDate(a)?.getTime() ?? -Infinity) - (parseItemDate(b)?.getTime() ?? -Infinity));
   } else if (filters.sort === "room") {
     filtered.sort((a, b) => (a.Room || "").localeCompare(b.Room || ""));
   }
@@ -337,7 +378,7 @@ async function init() {
     document.getElementById("sortDate").textContent = t.sortDate;
     document.getElementById("sortRoom").textContent = t.sortRoom;
     document.getElementById("infoLink").textContent = t.infoLink;
-    loading.textContent = t.loading;
+    document.getElementById("loadingText").textContent = t.loading;
     error.textContent = t.error;
     document.getElementById("empty").textContent = t.empty;
     [...document.querySelectorAll("#langToggle button")].forEach(b =>
