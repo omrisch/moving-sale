@@ -24,6 +24,7 @@ header p{margin:0;color:rgba(255,255,255,.9);font-size:.95rem;}
 .content{flex:1;min-width:0;}
 .controls{display:flex;direction:ltr;flex-wrap:wrap;gap:8px;justify-content:center;padding:12px 20px;}
 .sidebar .controls{justify-content:flex-start;padding:0;}
+.sidebar .controls + .controls{border-top:1px solid var(--border);padding-top:10px;}
 .sidebar .controls input,.sidebar .controls select{width:100%;}
 .controls input[type=search]{flex:1 1 220px;max-width:320px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:.95rem;}
 .controls input[type=number]{width:100px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:.95rem;}
