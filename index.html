@@ -271,6 +271,17 @@ function appendBatch() {
   renderState.shown += next.length;
 }
 
+// ponytail: IntersectionObserver only fires on a state *change* — if the sentinel is
+// already visible before and after render() (short filtered list), no new callback
+// fires and appendBatch() never runs again. Keep filling while it's still in view.
+function fillViewport() {
+  const sentinel = document.getElementById("scrollSentinel");
+  while (renderState.shown < renderState.filtered.length) {
+    if (sentinel.getBoundingClientRect().top > window.innerHeight + 300) break;
+    appendBatch();
+  }
+}
+
 function render(items, filters, lang) {
   const grid = document.getElementById("grid");
   const empty = document.getElementById("empty");
@@ -307,11 +318,11 @@ function render(items, filters, lang) {
   renderState.filtered = filtered;
   renderState.shown = 0;
   renderState.lang = lang;
-  appendBatch();
+  fillViewport();
 }
 
 new IntersectionObserver(entries => {
-  if (entries[0].isIntersecting && renderState.shown < renderState.filtered.length) appendBatch();
+  if (entries[0].isIntersecting) fillViewport();
 }, { rootMargin: "300px" }).observe(document.getElementById("scrollSentinel"));
 
 // Click a card's photo to open it enlarged in a native <dialog>; click anywhere to close.
