@@ -23,6 +23,7 @@
 </div>
 <div class="controls filters" id="statusFilters"></div>
 <div class="controls filters" id="categoryFilters"></div>
+<div class="controls filters" id="roomFilters"></div>
 <div class="controls price-range">
   <span id="priceLabel">Price (₪):</span>
   <input type="number" id="priceMin" min="0">
@@ -37,6 +38,7 @@
     <option value="default" id="sortDefault">Default</option>
     <option value="name" id="sortName">Name (A→Z)</option>
     <option value="date" id="sortDate">Date (soonest)</option>
+    <option value="room" id="sortRoom">Room (A→Z)</option>
   </select>
 </div>
 
@@ -44,6 +46,7 @@
 <div id="error" style="display:none">Couldn't load the list. Check the SHEET_CSV_URL in index.html.</div>
 <div id="empty" style="display:none">No items match.</div>
 <div id="grid"></div>
+<div id="scrollSentinel"></div>
 <dialog id="imgDialog"><img id="imgDialogPhoto" alt=""></dialog>
 
 <script>
@@ -74,6 +77,7 @@ const I18N = {
     infoLink: "Pickup info",
     allStatuses: "All statuses",
     allCategories: "All categories",
+    allRooms: "All rooms",
     statusLabel: { "For Sale": "For Sale", "Free": "Free", "Available Soon": "Available Soon", "Sold": "Sold", "Given Away": "Given Away" },
     availableFrom: date => `Available from ${date}`,
     dateLabel: "Available by:",
@@ -81,6 +85,8 @@ const I18N = {
     sortDefault: "Default",
     sortName: "Name (A→Z)",
     sortDate: "Date (soonest)",
+    sortRoom: "Room (A→Z)",
+    linkToItem: "Link to item",
     waMessage: (name, priceText) => `Hi! I'm interested in "${name}"${priceText ? ` (${priceText})` : ""} from the moving sale. Is it still available?`,
   },
   he: {
@@ -97,6 +103,7 @@ const I18N = {
     infoLink: "מידע על איסוף",
     allStatuses: "כל הסטטוסים",
     allCategories: "כל הקטגוריות",
+    allRooms: "כל החדרים",
     statusLabel: { "For Sale": "למכירה", "Free": "ללא תשלום", "Available Soon": "בקרוב", "Sold": "נמכר", "Given Away": "נמסר" },
     availableFrom: date => `זמין החל מ-${date}`,
     dateLabel: "זמין עד תאריך:",
@@ -104,6 +111,8 @@ const I18N = {
     sortDefault: "ברירת מחדל",
     sortName: "שם (א-ת)",
     sortDate: "תאריך (הקרוב ביותר)",
+    sortRoom: "חדר (א-ת)",
+    linkToItem: "קישור לפריט",
     waMessage: (name, priceText) => `היי! מתעניין/ת ב"${name}"${priceText ? ` (${priceText})` : ""} ממכירת המעבר. זה עדיין קיים?`,
   },
 };
@@ -160,6 +169,17 @@ function localField(it, lang, field) {
   return it[field] || "";
 }
 
+// Description free text may end with a plain URL (original retailer link, pasted from research) —
+// show it as a "Link to item" hyperlink instead of the raw URL string.
+function formatDescription(desc, lang) {
+  const match = desc.match(/https?:\/\/\S+/);
+  if (!match) return desc;
+  const url = match[0];
+  const before = desc.slice(0, match.index).trim();
+  const link = `<a href="${url}" target="_blank" rel="noopener">${I18N[lang].linkToItem}</a>`;
+  return before ? `${before} — ${link}` : link;
+}
+
 function whatsappLink(it, lang) {
   const t = I18N[lang];
   const name = localField(it, lang, "Item");
@@ -176,8 +196,43 @@ function parseItemDate(it) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-function render(items, filters, lang) {
+// ponytail: render in batches on scroll instead of all ~50 cards (+ their images) at once
+const BATCH_SIZE = 12;
+const renderState = { filtered: [], shown: 0, lang: "en" };
+
+function buildCard(it, lang) {
   const t = I18N[lang];
+  const claimed = it.Status === "Sold" || it.Status === "Given Away";
+  const card = document.createElement("div");
+  card.className = "card" + (claimed ? " claimed" : "");
+  const statusClass = it.Status.toLowerCase().replace(/\s+/g, "-");
+  const name = localField(it, lang, "Item") || "Untitled";
+  const category = localField(it, lang, "Category");
+  const description = localField(it, lang, "Description");
+  card.innerHTML = `
+    ${it["Photo URL"] ? `<img src="${it["Photo URL"]}" alt="${name}" loading="lazy" class="thumb">` : ""}
+    <div class="body">
+      <h3>${name}</h3>
+      ${category ? `<div class="cat">${category}</div>` : ""}
+      ${description ? `<div class="desc">${formatDescription(description, lang)}</div>` : ""}
+      <div class="row">
+        <span class="price">${it.Status === "Free" ? t.freePrice : (it.Price ? "₪" + it.Price : "")}</span>
+        <span class="badge ${statusClass}">${t.statusLabel[it.Status] || it.Status || ""}</span>
+      </div>
+      ${it.Date ? `<span class="badge available-soon">${t.availableFrom(it.Date)}</span>` : ""}
+      ${claimed ? "" : `<a class="wa-btn" href="${whatsappLink(it, lang)}" target="_blank" rel="noopener">${t.whatsapp}</a>`}
+    </div>`;
+  return card;
+}
+
+function appendBatch() {
+  const grid = document.getElementById("grid");
+  const next = renderState.filtered.slice(renderState.shown, renderState.shown + BATCH_SIZE);
+  next.forEach(it => grid.appendChild(buildCard(it, renderState.lang)));
+  renderState.shown += next.length;
+}
+
+function render(items, filters, lang) {
   const grid = document.getElementById("grid");
   const empty = document.getElementById("empty");
   const min = filters.priceMin === "" ? null : parseFloat(filters.priceMin);
@@ -186,6 +241,7 @@ function render(items, filters, lang) {
   const filtered = items.filter(it => {
     if (filters.status !== "All" && it.Status !== filters.status) return false;
     if (filters.category !== "All" && it.Category !== filters.category) return false;
+    if (filters.room !== "All" && it.Room !== filters.room) return false;
     const price = parseFloat(it.Price);
     if (!isNaN(price)) {
       if (min !== null && price < min) return false;
@@ -202,33 +258,20 @@ function render(items, filters, lang) {
     filtered.sort((a, b) => localField(a, lang, "Item").localeCompare(localField(b, lang, "Item")));
   } else if (filters.sort === "date") {
     filtered.sort((a, b) => (parseItemDate(a)?.getTime() ?? Infinity) - (parseItemDate(b)?.getTime() ?? Infinity));
+  } else if (filters.sort === "room") {
+    filtered.sort((a, b) => (a.Room || "").localeCompare(b.Room || ""));
   }
   grid.innerHTML = "";
   empty.style.display = filtered.length ? "none" : "block";
-  filtered.forEach(it => {
-    const claimed = it.Status === "Sold" || it.Status === "Given Away";
-    const card = document.createElement("div");
-    card.className = "card" + (claimed ? " claimed" : "");
-    const statusClass = it.Status.toLowerCase().replace(/\s+/g, "-");
-    const name = localField(it, lang, "Item") || "Untitled";
-    const category = localField(it, lang, "Category");
-    const description = localField(it, lang, "Description");
-    card.innerHTML = `
-      ${it["Photo URL"] ? `<img src="${it["Photo URL"]}" alt="${name}" loading="lazy" class="thumb">` : ""}
-      <div class="body">
-        <h3>${name}</h3>
-        ${category ? `<div class="cat">${category}</div>` : ""}
-        ${description ? `<div class="desc">${description}</div>` : ""}
-        <div class="row">
-          <span class="price">${it.Status === "Free" ? t.freePrice : (it.Price ? "₪" + it.Price : "")}</span>
-          <span class="badge ${statusClass}">${t.statusLabel[it.Status] || it.Status || ""}</span>
-        </div>
-        ${it.Date ? `<span class="badge available-soon">${t.availableFrom(it.Date)}</span>` : ""}
-        ${claimed ? "" : `<a class="wa-btn" href="${whatsappLink(it, lang)}" target="_blank" rel="noopener">${t.whatsapp}</a>`}
-      </div>`;
-    grid.appendChild(card);
-  });
+  renderState.filtered = filtered;
+  renderState.shown = 0;
+  renderState.lang = lang;
+  appendBatch();
 }
+
+new IntersectionObserver(entries => {
+  if (entries[0].isIntersecting && renderState.shown < renderState.filtered.length) appendBatch();
+}, { rootMargin: "300px" }).observe(document.getElementById("scrollSentinel"));
 
 // Click a card's photo to open it enlarged in a native <dialog>; click anywhere to close.
 document.getElementById("grid").addEventListener("click", e => {
@@ -292,6 +335,7 @@ async function init() {
     document.getElementById("sortDefault").textContent = t.sortDefault;
     document.getElementById("sortName").textContent = t.sortName;
     document.getElementById("sortDate").textContent = t.sortDate;
+    document.getElementById("sortRoom").textContent = t.sortRoom;
     document.getElementById("infoLink").textContent = t.infoLink;
     loading.textContent = t.loading;
     error.textContent = t.error;
@@ -313,6 +357,9 @@ async function init() {
     const categories = [...new Set(items.map(i => i.Category).filter(Boolean))].sort();
     const categoryCounts = { All: items.length };
     categories.forEach(c => categoryCounts[c] = items.filter(i => i.Category === c).length);
+    const rooms = [...new Set(items.map(i => i.Room).filter(Boolean))].sort();
+    const roomCounts = { All: items.length };
+    rooms.forEach(r => roomCounts[r] = items.filter(i => i.Room === r).length);
     // Category filter buttons show the (HE) translation from the first item that has one, English otherwise.
     const categoryLabel = c => {
       const t = I18N[lang];
@@ -323,9 +370,11 @@ async function init() {
 
     let getStatus = () => "All";
     let getCategory = () => "All";
+    let getRoom = () => "All";
     const rerender = () => render(items, {
       status: getStatus(),
       category: getCategory(),
+      room: getRoom(),
       query: search.value,
       priceMin: priceMin.value,
       priceMax: priceMax.value,
@@ -337,8 +386,10 @@ async function init() {
       const t = I18N[lang];
       const prevStatus = getStatus ? getStatus() : "All";
       const prevCategory = getCategory ? getCategory() : "All";
+      const prevRoom = getRoom ? getRoom() : "All";
       getStatus = buildFilterBar("statusFilters", t.allStatuses, STATUSES, statusCounts, s => t.statusLabel[s] || s, rerender);
       getCategory = buildFilterBar("categoryFilters", t.allCategories, categories, categoryCounts, categoryLabel, rerender);
+      getRoom = buildFilterBar("roomFilters", t.allRooms, rooms, roomCounts, r => r, rerender);
       rerender();
     }
     rebuildFilters();
