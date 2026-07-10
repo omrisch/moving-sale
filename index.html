@@ -29,6 +29,16 @@
   <span>&ndash;</span>
   <input type="number" id="priceMax" min="0">
 </div>
+<div class="controls price-range">
+  <span id="dateLabel">Available by:</span>
+  <input type="date" id="dateMax">
+  <span id="sortLabel">Sort:</span>
+  <select id="sortSelect">
+    <option value="default" id="sortDefault">Default</option>
+    <option value="name" id="sortName">Name (A→Z)</option>
+    <option value="date" id="sortDate">Date (soonest)</option>
+  </select>
+</div>
 
 <div id="loading">Loading items…</div>
 <div id="error" style="display:none">Couldn't load the list. Check the SHEET_CSV_URL in index.html.</div>
@@ -44,7 +54,7 @@ const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQAxZWivv
 // WhatsApp number (with country code, no + or spaces) that "Message on WhatsApp" links to.
 const WHATSAPP_NUMBER = "9720585518225";
 
-const STATUSES = ["For Sale", "Free", "Sold", "Given Away"];
+const STATUSES = ["For Sale", "Free", "Available Soon", "Sold", "Given Away"];
 
 // ponytail: fixed UI vocab is translated by hand here. Free-text item data (Item/Category/Description)
 // is translated by adding "Item (HE)" / "Category (HE)" / "Description (HE)" columns in the Sheet —
@@ -64,7 +74,13 @@ const I18N = {
     infoLink: "Pickup info",
     allStatuses: "All statuses",
     allCategories: "All categories",
-    statusLabel: { "For Sale": "For Sale", "Free": "Free", "Sold": "Sold", "Given Away": "Given Away" },
+    statusLabel: { "For Sale": "For Sale", "Free": "Free", "Available Soon": "Available Soon", "Sold": "Sold", "Given Away": "Given Away" },
+    availableFrom: date => `Available from ${date}`,
+    dateLabel: "Available by:",
+    sortLabel: "Sort:",
+    sortDefault: "Default",
+    sortName: "Name (A→Z)",
+    sortDate: "Date (soonest)",
     waMessage: (name, priceText) => `Hi! I'm interested in "${name}"${priceText ? ` (${priceText})` : ""} from the moving sale. Is it still available?`,
   },
   he: {
@@ -81,7 +97,13 @@ const I18N = {
     infoLink: "מידע על איסוף",
     allStatuses: "כל הסטטוסים",
     allCategories: "כל הקטגוריות",
-    statusLabel: { "For Sale": "למכירה", "Free": "ללא תשלום", "Sold": "נמכר", "Given Away": "נמסר" },
+    statusLabel: { "For Sale": "למכירה", "Free": "ללא תשלום", "Available Soon": "בקרוב", "Sold": "נמכר", "Given Away": "נמסר" },
+    availableFrom: date => `זמין החל מ-${date}`,
+    dateLabel: "זמין עד תאריך:",
+    sortLabel: "מיון:",
+    sortDefault: "ברירת מחדל",
+    sortName: "שם (א-ת)",
+    sortDate: "תאריך (הקרוב ביותר)",
     waMessage: (name, priceText) => `היי! מתעניין/ת ב"${name}"${priceText ? ` (${priceText})` : ""} ממכירת המעבר. זה עדיין קיים?`,
   },
 };
@@ -146,12 +168,21 @@ function whatsappLink(it, lang) {
   return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
 }
 
+// ponytail: Date column is free text; parsed with new Date() so ISO ("2026-08-01") sorts/filters
+// reliably. Unparseable or blank dates just opt the item out of date filtering/badges/sort-to-top.
+function parseItemDate(it) {
+  if (!it.Date) return null;
+  const d = new Date(it.Date);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function render(items, filters, lang) {
   const t = I18N[lang];
   const grid = document.getElementById("grid");
   const empty = document.getElementById("empty");
   const min = filters.priceMin === "" ? null : parseFloat(filters.priceMin);
   const max = filters.priceMax === "" ? null : parseFloat(filters.priceMax);
+  const dateMax = filters.dateMax ? new Date(filters.dateMax) : null;
   const filtered = items.filter(it => {
     if (filters.status !== "All" && it.Status !== filters.status) return false;
     if (filters.category !== "All" && it.Category !== filters.category) return false;
@@ -160,9 +191,18 @@ function render(items, filters, lang) {
       if (min !== null && price < min) return false;
       if (max !== null && price > max) return false;
     }
+    if (dateMax) {
+      const itemDate = parseItemDate(it);
+      if (itemDate && itemDate > dateMax) return false;
+    }
     if (!fuzzyMatch(filters.query, `${it.Item} ${it.Category} ${it.Description} ${localField(it, lang, "Item")} ${localField(it, lang, "Category")} ${localField(it, lang, "Description")}`)) return false;
     return true;
   });
+  if (filters.sort === "name") {
+    filtered.sort((a, b) => localField(a, lang, "Item").localeCompare(localField(b, lang, "Item")));
+  } else if (filters.sort === "date") {
+    filtered.sort((a, b) => (parseItemDate(a)?.getTime() ?? Infinity) - (parseItemDate(b)?.getTime() ?? Infinity));
+  }
   grid.innerHTML = "";
   empty.style.display = filtered.length ? "none" : "block";
   filtered.forEach(it => {
@@ -183,6 +223,7 @@ function render(items, filters, lang) {
           <span class="price">${it.Status === "Free" ? t.freePrice : (it.Price ? "₪" + it.Price : "")}</span>
           <span class="badge ${statusClass}">${t.statusLabel[it.Status] || it.Status || ""}</span>
         </div>
+        ${it.Date ? `<span class="badge available-soon">${t.availableFrom(it.Date)}</span>` : ""}
         ${claimed ? "" : `<a class="wa-btn" href="${whatsappLink(it, lang)}" target="_blank" rel="noopener">${t.whatsapp}</a>`}
       </div>`;
     grid.appendChild(card);
@@ -233,6 +274,8 @@ async function init() {
   const search = document.getElementById("search");
   const priceMin = document.getElementById("priceMin");
   const priceMax = document.getElementById("priceMax");
+  const dateMax = document.getElementById("dateMax");
+  const sortSelect = document.getElementById("sortSelect");
 
   let lang = localStorage.getItem("moving-sale-lang") || "en";
 
@@ -244,6 +287,11 @@ async function init() {
     document.getElementById("subtitle").textContent = t.subtitle;
     search.placeholder = t.searchPlaceholder;
     document.getElementById("priceLabel").textContent = t.priceLabel;
+    document.getElementById("dateLabel").textContent = t.dateLabel;
+    document.getElementById("sortLabel").textContent = t.sortLabel;
+    document.getElementById("sortDefault").textContent = t.sortDefault;
+    document.getElementById("sortName").textContent = t.sortName;
+    document.getElementById("sortDate").textContent = t.sortDate;
     document.getElementById("infoLink").textContent = t.infoLink;
     loading.textContent = t.loading;
     error.textContent = t.error;
@@ -281,6 +329,8 @@ async function init() {
       query: search.value,
       priceMin: priceMin.value,
       priceMax: priceMax.value,
+      dateMax: dateMax.value,
+      sort: sortSelect.value,
     }, lang);
 
     function rebuildFilters() {
@@ -296,6 +346,8 @@ async function init() {
     search.oninput = rerender;
     priceMin.oninput = rerender;
     priceMax.oninput = rerender;
+    dateMax.oninput = rerender;
+    sortSelect.onchange = rerender;
 
     document.getElementById("langToggle").onclick = (e) => {
       const btn = e.target.closest("button[data-lang]");

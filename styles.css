@@ -1,7 +1,7 @@
 :root{
   --bg:#eef1fb; --card:#fff; --text:#1a1a2e; --muted:#65667a; --border:#dfe3f5;
   --accent:#6d5ef7; --accent-2:#14b8a6;
-  --sale:#16a34a; --free:#2563eb; --gone:#9a9a9a;
+  --sale:#16a34a; --free:#2563eb; --gone:#9a9a9a; --soon:#d97706;
 }
 *{box-sizing:border-box;}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);}
@@ -43,6 +43,8 @@ html[dir="rtl"] .card,html[dir="rtl"] .filters button,html[dir="rtl"] .controls 
 .badge.for-sale{background:var(--sale);}
 .badge.free{background:var(--free);}
 .badge.sold,.badge.given-away{background:var(--gone);}
+.badge.available-soon{background:var(--soon);}
+.card .avail-date{color:var(--soon);font-size:.8rem;font-weight:600;}
 .card.claimed{opacity:.55;}
 .wa-btn{display:block;margin-top:8px;text-align:center;padding:8px;border-radius:8px;background:#25D366;color:#fff;font-size:.85rem;font-weight:600;text-decoration:none;}
 #empty,#loading,#error{text-align:center;color:var(--muted);padding:40px 20px;}
