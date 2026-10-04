@@ -43,10 +43,14 @@ Sheet (edit): **https://docs.google.com/spreadsheets/d/1rt4IIMhyQUcWFyh_gl7EJU0c
 
 1. Forward the sale posts (photo + caption) into one dedicated WhatsApp chat (e.g. a group with just the two of you).
 2. Phone: that chat → chat info → **Export Chat → Attach Media** → AirDrop/save the zip to the Mac.
-3. `python3 import_whatsapp.py ~/Downloads/"WhatsApp Chat - <name>.zip"` (add `--dry` to preview)
+3. `python3 import_whatsapp.py ~/Downloads/"WhatsApp Chat - <name>.zip"` (add `--dry` to preview; photos go to a temp folder)
+   - runs `claude -p` on the chat + current sheet: names/prices/categories each post, one item per photo for "any piece X shekels" posts, crops photos showing several items, skips anything already in the sheet, Room = `Clothes` for clothing/shoes
    - copies new photos into `photos/`, commits + pushes them
-   - copies sheet rows (columns A-H) to the clipboard → click column A of the first empty row → paste
-4. Fix anything the guesser got wrong (name = caption up to first `-`/`,`/`.`; price = last number next to shekel/₪/"for").
+   - copies sheet rows (columns A-H) to the clipboard and prints the cell to paste at
+   - prints suggested status changes from messages like `sold - green toys wagon` (apply by hand)
+4. Review the pasted rows. Takes ~2 min; each run re-asks Claude, so wording can vary.
+
+Export has no reactions and no reply context, so "sold" messages must name the item.
 
 Re-export the whole chat each time; photos already in `photos/` are skipped.
 
