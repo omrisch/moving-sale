@@ -64,7 +64,7 @@ const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQAxZWivv
 // WhatsApp number (with country code, no + or spaces) that "Message on WhatsApp" links to.
 const WHATSAPP_NUMBER = "9720585518225";
 
-const STATUSES = ["For Sale", "Free", "Available Soon", "Sold", "Given Away"];
+const STATUSES = ["For Sale", "Free", "Available Soon", "Reserved", "Sold", "Given Away"];
 
 // ponytail: fixed UI vocab is translated by hand here. Free-text item data (Item/Category/Description)
 // is translated by adding "Item (HE)" / "Category (HE)" / "Description (HE)" columns in the Sheet —
@@ -85,7 +85,7 @@ const I18N = {
     allStatuses: "All statuses",
     allCategories: "All categories",
     allRooms: "All rooms",
-    statusLabel: { "For Sale": "For Sale", "Free": "Free", "Available Soon": "Available Soon", "Sold": "Sold", "Given Away": "Given Away" },
+    statusLabel: { "For Sale": "For Sale", "Free": "Free", "Available Soon": "Available Soon", "Reserved": "Reserved", "Sold": "Sold", "Given Away": "Given Away" },
     availableFrom: date => `Available from ${date}`,
     dateLabel: "Available by:",
     sortLabel: "Sort:",
@@ -111,7 +111,7 @@ const I18N = {
     allStatuses: "כל הסטטוסים",
     allCategories: "כל הקטגוריות",
     allRooms: "כל החדרים",
-    statusLabel: { "For Sale": "למכירה", "Free": "ללא תשלום", "Available Soon": "בקרוב", "Sold": "נמכר", "Given Away": "נמסר" },
+    statusLabel: { "For Sale": "למכירה", "Free": "ללא תשלום", "Available Soon": "בקרוב", "Reserved": "שמור", "Sold": "נמכר", "Given Away": "נמסר" },
     availableFrom: date => `זמין החל מ-${date}`,
     dateLabel: "זמין עד תאריך:",
     sortLabel: "מיון:",
@@ -249,7 +249,7 @@ function buildCard(it, lang) {
   const category = localField(it, lang, "Category");
   const description = localField(it, lang, "Description");
   card.innerHTML = `
-    ${it["Photo URL"] ? `<img src="${it["Photo URL"]}" alt="${name}" loading="lazy" class="thumb">` : ""}
+    ${it["Photo URL"] ? `<img src="${it["Photo URL"]}" alt="${name}" loading="lazy" class="thumb" onerror="this.remove()">` : ""}
     <div class="body">
       <h3>${name}</h3>
       ${category ? `<div class="cat">${category}</div>` : ""}

@@ -4,6 +4,7 @@ Static site. Google Sheet is the database — edit the sheet, the site updates. 
 
 Live at: **https://omrisch.github.io/moving-sale/**
 Repo: **https://github.com/omrisch/moving-sale**
+Sheet (edit): **https://docs.google.com/spreadsheets/d/1rt4IIMhyQUcWFyh_gl7EJU0c6Qdq-wC74w8ZmzGJ42k/edit**
 
 ## Files
 
@@ -21,7 +22,8 @@ Repo: **https://github.com/omrisch/moving-sale**
 
    `Item (HE) | Category (HE) | Description (HE)`
 
-   - `Status` must be one of: `For Sale`, `Free`, `Sold`, `Given Away`, `Inactive`
+   - `Status` must be one of: `For Sale`, `Free`, `Available Soon`, `Reserved`, `Sold`, `Given Away`, `Inactive`
+     - `Reserved` shows a purple badge; WhatsApp button stays (people can ask to be next in line).
      - `Sold` / `Given Away` still show on the site, grayed out, no WhatsApp button.
      - `Inactive` is fully hidden — not shown, not counted, not filterable. Use it for items not ready to list yet.
    - `Photo URL`: upload photo to Google Drive/Photos (or anywhere), get a public link, paste it
@@ -36,6 +38,17 @@ Repo: **https://github.com/omrisch/moving-sale**
    ```
 
    already set to the published link. Only touch this if you republish under a different link.
+
+## Adding items from WhatsApp
+
+1. Forward the sale posts (photo + caption) into one dedicated WhatsApp chat (e.g. a group with just the two of you).
+2. Phone: that chat → chat info → **Export Chat → Attach Media** → AirDrop/save the zip to the Mac.
+3. `python3 import_whatsapp.py ~/Downloads/"WhatsApp Chat - <name>.zip"` (add `--dry` to preview)
+   - copies new photos into `photos/`, commits + pushes them
+   - copies sheet rows (columns A-H) to the clipboard → click column A of the first empty row → paste
+4. Fix anything the guesser got wrong (name = caption up to first `-`/`,`/`.`; price = last number next to shekel/₪/"for").
+
+Re-export the whole chat each time; photos already in `photos/` are skipped.
 
 ## Updating the live site
 
