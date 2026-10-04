@@ -43,6 +43,8 @@
         <option value="name" id="sortName">Name (A→Z)</option>
         <option value="date" id="sortDate">Date (soonest)</option>
         <option value="room" id="sortRoom">Room (A→Z)</option>
+        <option value="priceAsc" id="sortPriceAsc">Price (low→high)</option>
+        <option value="priceDesc" id="sortPriceDesc">Price (high→low)</option>
       </select>
     </div>
   </aside>
@@ -89,7 +91,9 @@ const I18N = {
     availableFrom: date => `Available from ${date}`,
     dateLabel: "Available by:",
     sortLabel: "Sort:",
-    sortDefault: "Default",
+    sortDefault: "Newest available first",
+    sortPriceAsc: "Price (low→high)",
+    sortPriceDesc: "Price (high→low)",
     sortName: "Name (A→Z)",
     sortDate: "Date (soonest)",
     sortRoom: "Room (A→Z)",
@@ -115,7 +119,9 @@ const I18N = {
     availableFrom: date => `זמין החל מ-${date}`,
     dateLabel: "זמין עד תאריך:",
     sortLabel: "מיון:",
-    sortDefault: "ברירת מחדל",
+    sortDefault: "חדש וזמין קודם",
+    sortPriceAsc: "מחיר (נמוך לגבוה)",
+    sortPriceDesc: "מחיר (גבוה לנמוך)",
     sortName: "שם (א-ת)",
     sortDate: "תאריך (הקרוב ביותר)",
     sortRoom: "חדר (א-ת)",
@@ -312,6 +318,16 @@ function render(items, filters, lang) {
     filtered.sort((a, b) => (parseItemDate(a)?.getTime() ?? -Infinity) - (parseItemDate(b)?.getTime() ?? -Infinity));
   } else if (filters.sort === "room") {
     filtered.sort((a, b) => (a.Room || "").localeCompare(b.Room || ""));
+  } else if (filters.sort === "priceAsc" || filters.sort === "priceDesc") {
+    // Free = 0; no price listed sorts last either way
+    const price = it => it.Status === "Free" ? 0 : (parseFloat(String(it.Price).replace(/,/g, "")) || null);
+    const dir = filters.sort === "priceAsc" ? 1 : -1;
+    const gone = it => it.Status === "Sold" || it.Status === "Given Away";
+    filtered.sort((a, b) => gone(a) - gone(b) || (price(a) === null) - (price(b) === null) || dir * (price(a) - price(b)));
+  } else {
+    // Available now first, then reserved, coming soon, gone; newest sheet rows first within each
+    const rank = { "For Sale": 0, "Free": 0, "Reserved": 1, "Available Soon": 2, "Sold": 3, "Given Away": 3 };
+    filtered.sort((a, b) => (rank[a.Status] ?? 2) - (rank[b.Status] ?? 2) || b._row - a._row);
   }
   grid.innerHTML = "";
   empty.style.display = filtered.length ? "none" : "block";
@@ -392,6 +408,8 @@ async function init() {
     document.getElementById("dateLabel").textContent = t.dateLabel;
     document.getElementById("sortLabel").textContent = t.sortLabel;
     document.getElementById("sortDefault").textContent = t.sortDefault;
+    document.getElementById("sortPriceAsc").textContent = t.sortPriceAsc;
+    document.getElementById("sortPriceDesc").textContent = t.sortPriceDesc;
     document.getElementById("sortName").textContent = t.sortName;
     document.getElementById("sortDate").textContent = t.sortDate;
     document.getElementById("sortRoom").textContent = t.sortRoom;
@@ -408,7 +426,7 @@ async function init() {
     const res = await fetch(SHEET_CSV_URL, { cache: "no-store" });
     if (!res.ok) throw new Error("bad response");
     // "Inactive" items are hidden entirely — not counted, not filterable, not rendered.
-    const items = parseCSV(await res.text()).filter(it => it.Status !== "Inactive" && it.Item);
+    const items = parseCSV(await res.text()).map((it, i) => (it._row = i, it)).filter(it => it.Status !== "Inactive" && it.Item);
     loading.style.display = "none";
 
     const statusCounts = { All: items.length };
