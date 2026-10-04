@@ -54,7 +54,7 @@
     <div id="scrollSentinel"></div>
   </main>
 </div>
-<dialog id="imgDialog"><img id="imgDialogPhoto" alt=""></dialog>
+<dialog id="imgDialog"><img id="imgDialogPhoto" alt=""><div id="imgDialogText"></div></dialog>
 
 <script>
 // ponytail: Google Sheet published-to-web CSV is the entire database. No backend.
@@ -325,10 +325,17 @@ new IntersectionObserver(entries => {
   if (entries[0].isIntersecting) fillViewport();
 }, { rootMargin: "300px" }).observe(document.getElementById("scrollSentinel"));
 
-// Click a card's photo to open it enlarged in a native <dialog>; click anywhere to close.
+// Click a card to open its photo enlarged + full description in a native <dialog>; click anywhere to close.
 document.getElementById("grid").addEventListener("click", e => {
-  if (e.target.classList.contains("thumb")) {
-    document.getElementById("imgDialogPhoto").src = e.target.src;
+  const card = e.target.closest(".card");
+  if (card && !e.target.closest("a")) {
+    const img = card.querySelector(".thumb");
+    const photo = document.getElementById("imgDialogPhoto");
+    photo.hidden = !img;
+    if (img) photo.src = img.src;
+    const desc = card.querySelector(".desc");
+    document.getElementById("imgDialogText").innerHTML =
+      `<h3>${card.querySelector("h3").innerHTML}</h3>${desc ? `<div class="desc">${desc.innerHTML}</div>` : ""}`;
     document.getElementById("imgDialog").showModal();
     return;
   }

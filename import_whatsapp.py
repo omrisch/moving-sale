@@ -1,102 +1,126 @@
-"""WhatsApp chat export (.zip) -> photos/ + sheet rows on the clipboard.
+"""WhatsApp chat export (.zip) -> photos/ + sheet rows on the clipboard, via `claude -p`.
 
-    python3 import_whatsapp.py ~/Downloads/"WhatsApp Chat - Sale inbox.zip"
-    python3 import_whatsapp.py export.zip --dry     # preview only: no copy, no push
+    python3 import_whatsapp.py ~/Downloads/"WhatsApp Chat - Moving Sale.zip"
+    python3 import_whatsapp.py export.zip --dry     # preview: photos to a temp folder, no push, no clipboard
 
-Each image + its caption becomes one row. Photos already in photos/ are skipped,
-so re-exporting the whole chat every time is fine.
+Claude reads the chat + the current sheet, groups photos with their posts, skips
+duplicates and items already in the sheet, and suggests status changes
+(e.g. "sold the wagon") for existing rows. Re-exporting the whole chat each time is fine.
 """
-import re, shutil, subprocess, sys, tempfile, zipfile
+from PIL import Image, ImageOps
+import csv, hashlib, io, json, re, shutil, subprocess, sys, tempfile, urllib.request, zipfile
 from pathlib import Path
 
 HERE = Path(__file__).parent
 PHOTOS = HERE / "photos"
-# iOS:     [04/10/2026, 16:54:12] Name: text
-# Android: 04/10/2026, 16:54 - Name: text
-HEADER = re.compile(r"^‎?\[?\d{1,2}[./]\d{1,2}[./]\d{2,4},? \d{1,2}:\d{2}(?::\d{2})?(?: ?[AP]M)?\]? (?:- )?[^:]+: (.*)$")
-IMAGE = re.compile(r"[\w\-]+\.(?:jpe?g|png|webp)", re.I)
-ATTACH_NOISE = re.compile(r"<attached: [^>]*>|\(file attached\)|image omitted|‎")
-# ponytail: price = last number next to shekel/₪/NIS/"for"; anything fancier, fix it in the sheet
-PRICE = re.compile(r"(?:₪|for)\s*(\d[\d,]*)|(\d[\d,]*)\s*(?:₪|shekels?|nis|ש\"ח|שקל)", re.I)
-FREE = re.compile(r"\bfree\b|חינם|במתנה", re.I)
+SHEET_CSV_URL = re.search(r'SHEET_CSV_URL = "([^"]+)"', (HERE / "index.html").read_text()).group(1)
+COLS = ["Room", "Item", "Category", "Price", "Status", "Description", "Photo"]
+STATUSES = ["For Sale", "Free", "Available Soon", "Reserved", "Sold", "Given Away", "Inactive"]
+
+SCHEMA = {
+    "type": "object", "required": ["new_items", "updates"],
+    "properties": {
+        "new_items": {"type": "array", "items": {
+            "type": "object", "required": COLS + ["Crop"],
+            "properties": {**{c: {"type": "string"} for c in COLS},
+                           "Crop": {"type": "array", "items": {"type": "number"}}}}},
+        "updates": {"type": "array", "items": {
+            "type": "object", "required": ["row", "item", "column", "value"],
+            "properties": {"row": {"type": "integer"}, "item": {"type": "string"},
+                           "column": {"type": "string"}, "value": {"type": "string"}}}},
+    },
+}
+
+PROMPT = """You turn a WhatsApp chat of moving-sale posts into rows for a Google Sheet that powers a sale website.
+
+CURRENT SHEET (row number, then its columns):
+{sheet}
+
+WHATSAPP CHAT (photo filenames are <attached: ...>; the files are in {photo_dir}):
+{chat}
+
+Rules:
+- One new item per sale post; its photo is the <attached> file in the same message.
+- Photo-only messages right after a post: if that post sells many things at a per-piece price (e.g. "any clothes 30 shekels"), each photo is its own item - open the photo with Read to name and describe it, price per the post. Otherwise they're extra photos of the same item; ignore them (one photo per item).
+- One photo showing several separately-sellable things (e.g. 2 pairs of shoes) -> one item per thing, same Photo, each with Crop = [left, top, right, bottom] as fractions 0-1 of the image framing just that thing (generous margins). Otherwise Crop = [].
+- Skip posts already in the sheet (Photo URL starting with the same wa-xxxxxxxxxx name, or same item) and repeated posts within the chat.
+- Item: short English name (e.g. "Green Toys wagon", "2T autumn/winter clothes bundle"). No "(NEW)" tags; say "new" in Description instead.
+- Price: digits only, the asking price (not what was originally paid). Blank if Free or unclear.
+- Status: one of {statuses}. "Free" if given away for free.
+- Category: reuse an existing sheet category when one fits, else a short new one (e.g. "Kids clothes", "Toys").
+- Room: "Clothes" for any clothing, shoes or accessories (adults' or kids'). Otherwise reuse an existing Room value when obvious, else blank.
+- Description: useful details (condition, sizes, contents, brands) as one line. Omit pickup location and price.
+- Photo: the attached filename exactly.
+- updates: only for messages that clearly change an existing sheet row (sold, reserved, price change). Column is Status or Price; Status must be from the list above. Otherwise empty.
+"""
 
 
-def messages(chat_text):
-    msgs = []
-    for line in chat_text.splitlines():
-        m = HEADER.match(line)
-        if m:
-            msgs.append(m.group(1))
-        elif msgs:
-            msgs[-1] += "\n" + line
-    return msgs
-
-
-def items(msgs):
-    """Images followed by caption text (same message or the next one) -> (photo, caption)."""
-    out, pending = [], []
-    for msg in msgs:
-        imgs = IMAGE.findall(msg)
-        text = ATTACH_NOISE.sub("", IMAGE.sub("", msg)).strip()
-        pending += imgs
-        if text and pending:
-            out.append((pending[0], text))  # ponytail: first image only; multi-photo items later if needed
-            pending = []
-    out += [(p, "") for p in pending]
-    return out
-
-
-def row(photo, caption):
-    name = re.split(r" - |\. |, |\n", caption, maxsplit=1)[0].strip() or "UNNAMED"
-    prices = [a or b for a, b in PRICE.findall(caption)]
-    free = bool(FREE.search(caption))
-    price = "" if free or not prices else prices[-1].replace(",", "")
-    desc = " ".join(caption.split())
-    # Sheet columns A-H: Room, Item, Category, Price, Status, Date, Photo URL, Description
-    # (stop at H: the (HE) columns hold GOOGLETRANSLATE formulas, don't paste over them)
-    return ["", name, "", price, "Free" if free else "For Sale", "", f"photos/{photo}", desc]
+def sheet_text():
+    rows = list(csv.reader(io.StringIO(urllib.request.urlopen(SHEET_CSV_URL).read().decode())))
+    head = rows[0]
+    keep = [head.index(c) for c in ["Room", "Item", "Category", "Price", "Status", "Photo URL"]]
+    used = [n for n, r in enumerate(rows[1:], 2) if r[head.index("Item")].strip()]
+    lines = ["row\t" + "\t".join(head[i] for i in keep)]
+    lines += [f"{n}\t" + "\t".join(rows[n - 1][i] for i in keep) for n in used]
+    return "\n".join(lines), max(used, default=1) + 1
 
 
 def main(src, dry):
     with tempfile.TemporaryDirectory() as tmp:
         zipfile.ZipFile(src).extractall(tmp)
         chat = next(Path(tmp).rglob("*.txt")).read_text(encoding="utf-8")
-        new = [(p, c) for p, c in items(messages(chat)) if not (PHOTOS / p).exists()]
-        if not dry:
-            PHOTOS.mkdir(exist_ok=True)
-            for p, _ in new:
-                shutil.copy(next(Path(tmp).rglob(p)), PHOTOS / p)
-    if not new:
-        print("Nothing new.")
-        return
-    tsv = "\n".join("\t".join(row(p, c)) for p, c in new)
-    print(tsv)
+        # WhatsApp renumbers files on every export -> rename by content hash so re-imports dedupe
+        files = {}
+        for f in list(Path(tmp).rglob("*")):
+            if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+                new = f"wa-{hashlib.md5(f.read_bytes()).hexdigest()[:10]}{f.suffix.lower()}"
+                chat = chat.replace(f.name, new)
+                files[new] = f.rename(f.with_name(new))
+        sheet, next_row = sheet_text()
+        print("Asking Claude (a minute or two)...", file=sys.stderr)
+        out = subprocess.run(
+            ["claude", "-p", "--output-format", "json", "--json-schema", json.dumps(SCHEMA),
+             "--allowedTools", "Read", "--add-dir", tmp],
+            input=PROMPT.format(sheet=sheet, chat=chat, photo_dir=tmp, statuses=", ".join(STATUSES)),
+            capture_output=True, text=True, check=True).stdout
+        res = json.loads(out)["structured_output"]
+        items = [it for it in res["new_items"] if it["Photo"] in files]
+        crops = {}
+        out_dir = Path(tempfile.mkdtemp(prefix="wa-preview-")) if dry else PHOTOS
+        for it in items:
+            src_file = files[it["Photo"]]
+            if len(it["Crop"]) == 4:
+                n = crops[it["Photo"]] = crops.get(it["Photo"], 0) + 1
+                it["Photo"] = f"{src_file.stem}-{n}.jpg"
+            out_dir.mkdir(exist_ok=True)
+            if len(it["Crop"]) == 4:
+                im = ImageOps.exif_transpose(Image.open(src_file)).convert("RGB")
+                w, h = im.size
+                l, t, r, b = it["Crop"]
+                im.crop((int(l * w), int(t * h), int(r * w), int(b * h))).save(out_dir / it["Photo"], quality=88)
+            else:
+                shutil.copy(src_file, out_dir / it["Photo"])
+
+    # Sheet columns A-H: Room, Item, Category, Price, Status, Date, Photo URL, Description
+    # (stop at H: the (HE) columns hold GOOGLETRANSLATE formulas, don't paste over them)
+    clean = lambda s: " ".join(s.split())
+    tsv = "\n".join("\t".join([clean(it["Room"]), clean(it["Item"]), clean(it["Category"]), it["Price"],
+                               it["Status"], "", f"photos/{it['Photo']}", clean(it["Description"])]) for it in items)
+    print(f"\n{len(items)} new items (paste at A{next_row}):\n{tsv}" if items else "\nNo new items.")
+    if res["updates"]:
+        print("\nUpdate these existing cells by hand:")
+        for u in res["updates"]:
+            print(f"  row {u['row']} ({u['item']}): {u['column']} -> {u['value']}")
     if dry:
+        print(f"\nPreview photos: {out_dir}")
+    if dry or not items:
         return
     subprocess.run("pbcopy", input=tsv.encode(), check=True)
     subprocess.run(["git", "add", "photos"], cwd=HERE, check=True)
-    subprocess.run(["git", "commit", "-m", f"Add {len(new)} item photos from WhatsApp"], cwd=HERE, check=True)
+    subprocess.run(["git", "commit", "-m", f"Add {len(items)} item photos from WhatsApp"], cwd=HERE, check=True)
     subprocess.run(["git", "push"], cwd=HERE, check=True)
-    print(f"\n{len(new)} rows copied. Paste into the first empty row, column A.")
-
-
-def demo():
-    ios = ("[04/10/2026, 16:54:12] Wife: ‎<attached: 00000012-PHOTO-2026-10-04-16-54-12.jpg>\n"
-           "[04/10/2026, 16:54:20] Wife: (NEW) Garbage truck toy new on the box - with lights. Payed 120 shekels, selling for 70. Pickup in Ramat Gan\n"
-           "[04/10/2026, 16:49:01] Wife: ‎<attached: 00000013-PHOTO-2026-10-04-16-49-01.jpg>\n"
-           "Orchard Shopping list game, a mix between memory game and bingo. In perfect condition - 40 shekels.\n"
-           "[04/10/2026, 17:00:00] Wife: ok thanks\n")
-    rows = [row(*i) for i in items(messages(ios))]
-    assert [r[1] for r in rows] == ["(NEW) Garbage truck toy new on the box", "Orchard Shopping list game"], rows
-    assert [r[3] for r in rows] == ["70", "40"], rows
-    android = "04/10/2026, 16:54 - Wife: IMG-20261004-WA0001.jpg (file attached)\nKids chair, free\n"
-    r = row(*items(messages(android))[0])
-    assert r[1] == "Kids chair" and r[4] == "Free" and r[3] == "" and r[6] == "photos/IMG-20261004-WA0001.jpg", r
-    print("ok")
+    print(f"\nRows copied to clipboard. Click cell A{next_row} in the sheet and paste.")
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["--test"]:
-        demo()
-    else:
-        main(sys.argv[1], "--dry" in sys.argv)
+    main(sys.argv[1], "--dry" in sys.argv)
