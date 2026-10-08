@@ -1,18 +1,19 @@
-"""WhatsApp chat export (.zip) -> photos/ + sheet rows on the clipboard, via `claude -p`.
+"""WhatsApp chat export (.zip) -> Drive photos folder + sheet rows on the clipboard, via `claude -p`.
 
     python3 import_whatsapp.py ~/Downloads/"WhatsApp Chat - Moving Sale.zip"
-    python3 import_whatsapp.py export.zip --dry     # preview: photos to a temp folder, no push, no clipboard
+    python3 import_whatsapp.py export.zip --dry     # preview: photos to a temp folder, no Drive, no clipboard
 
 Claude reads the chat + the current sheet, groups photos with their posts, skips
 duplicates and items already in the sheet, and suggests status changes
 (e.g. "sold the wagon") for existing rows. Re-exporting the whole chat each time is fine.
 """
 from PIL import Image, ImageOps
-import csv, hashlib, io, json, re, shutil, subprocess, sys, tempfile, urllib.request, zipfile
+import csv, hashlib, io, json, re, shutil, subprocess, sys, tempfile, time, urllib.request, zipfile
 from pathlib import Path
 
 HERE = Path(__file__).parent
-PHOTOS = HERE / "photos"
+# Drive for desktop folder, shared "Anyone with the link: Viewer" so files inherit public access
+PHOTOS = Path.home() / "omri.schulman@gmail.com - Google Drive/My Drive/Moving Sale Photos"
 SHEET_CSV_URL = re.search(r'SHEET_CSV_URL = "([^"]+)"', (HERE / "index.html").read_text()).group(1)
 COLS = ["Room", "Item", "Category", "Price", "Status", "Description", "Photo"]
 STATUSES = ["For Sale", "Free", "Available Soon", "Reserved", "Sold", "Given Away", "Inactive"]
@@ -43,7 +44,7 @@ Rules:
 - One new item per sale post; its photo is the <attached> file in the same message.
 - Photo-only messages right after a post: if that post sells many things at a per-piece price (e.g. "any clothes 30 shekels"), each photo is its own item - open the photo with Read to name and describe it, price per the post. Otherwise they're extra photos of the same item; ignore them (one photo per item).
 - One photo showing several separately-sellable things (e.g. 2 pairs of shoes) -> one item per thing, same Photo, each with Crop = [left, top, right, bottom] as fractions 0-1 of the image framing just that thing (generous margins). Otherwise Crop = [].
-- Skip posts already in the sheet (Photo URL starting with the same wa-xxxxxxxxxx name, or same item) and repeated posts within the chat.
+- Skip posts already in the sheet (same item) and repeated posts within the chat.
 - Item: short English name (e.g. "Green Toys wagon", "2T autumn/winter clothes bundle"). No "(NEW)" tags; say "new" in Description instead.
 - Price: digits only, the asking price (not what was originally paid). Blank if Free or unclear.
 - Status: one of {statuses}. "Free" if given away for free.
@@ -63,6 +64,16 @@ def sheet_text():
     lines = ["row\t" + "\t".join(head[i] for i in keep)]
     lines += [f"{n}\t" + "\t".join(rows[n - 1][i] for i in keep) for n in used]
     return "\n".join(lines), max(used, default=1) + 1
+
+
+def drive_url(f):
+    # Drive for desktop sets the file ID as an xattr once the upload syncs
+    for _ in range(60):
+        r = subprocess.run(["xattr", "-p", "com.google.drivefs.item-id#S", f], capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return f"https://drive.google.com/file/d/{r.stdout.strip()}/view"
+        time.sleep(2)
+    sys.exit(f"Drive never synced {f.name}; is Google Drive for desktop running?")
 
 
 def main(src, dry):
@@ -92,6 +103,9 @@ def main(src, dry):
             if len(it["Crop"]) == 4:
                 n = crops[it["Photo"]] = crops.get(it["Photo"], 0) + 1
                 it["Photo"] = f"{src_file.stem}-{n}.jpg"
+            it["skip"] = (out_dir / it["Photo"]).exists()  # photo already imported on an earlier run
+            if it["skip"]:
+                continue
             out_dir.mkdir(exist_ok=True)
             if len(it["Crop"]) == 4:
                 im = ImageOps.exif_transpose(Image.open(src_file)).convert("RGB")
@@ -101,11 +115,15 @@ def main(src, dry):
             else:
                 shutil.copy(src_file, out_dir / it["Photo"])
 
+    items = [it for it in items if not it["skip"]]
+    for it in items:
+        it["url"] = it["Photo"] if dry else drive_url(PHOTOS / it["Photo"])
+
     # Sheet columns A-H: Room, Item, Category, Price, Status, Date, Photo URL, Description
     # (stop at H: the (HE) columns hold GOOGLETRANSLATE formulas, don't paste over them)
     clean = lambda s: " ".join(s.split())
     tsv = "\n".join("\t".join([clean(it["Room"]), clean(it["Item"]), clean(it["Category"]), it["Price"],
-                               it["Status"], "", f"photos/{it['Photo']}", clean(it["Description"])]) for it in items)
+                               it["Status"], "", it["url"], clean(it["Description"])]) for it in items)
     print(f"\n{len(items)} new items (paste at A{next_row}):\n{tsv}" if items else "\nNo new items.")
     if res["updates"]:
         print("\nUpdate these existing cells by hand:")
@@ -116,9 +134,6 @@ def main(src, dry):
     if dry or not items:
         return
     subprocess.run("pbcopy", input=tsv.encode(), check=True)
-    subprocess.run(["git", "add", "photos"], cwd=HERE, check=True)
-    subprocess.run(["git", "commit", "-m", f"Add {len(items)} item photos from WhatsApp"], cwd=HERE, check=True)
-    subprocess.run(["git", "push"], cwd=HERE, check=True)
     print(f"\nRows copied to clipboard. Click cell A{next_row} in the sheet and paste.")
 
 

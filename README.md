@@ -26,7 +26,7 @@ Sheet (edit): **https://docs.google.com/spreadsheets/d/1rt4IIMhyQUcWFyh_gl7EJU0c
      - `Reserved` shows a purple badge; WhatsApp button stays (people can ask to be next in line).
      - `Sold` / `Given Away` still show on the site, grayed out, no WhatsApp button.
      - `Inactive` is fully hidden — not shown, not counted, not filterable. Use it for items not ready to list yet.
-   - `Photo URL`: upload photo to Google Drive/Photos (or anywhere), get a public link, paste it
+   - `Photo URL`: drop the photo in Drive `My Drive/Moving Sale Photos` (personal account, folder is shared "Anyone with the link"), copy its share link, paste it. Drive share links are rewritten to direct image links by `index.html`; any other public image URL works too
    - `Price`: number only (₪), leave blank if Free
 
 2. **File → Share → Publish to web** → pick the sheet tab → format **CSV** → Publish → copy the link.
@@ -45,14 +45,14 @@ Sheet (edit): **https://docs.google.com/spreadsheets/d/1rt4IIMhyQUcWFyh_gl7EJU0c
 2. Phone: that chat → chat info → **Export Chat → Attach Media** → AirDrop/save the zip to the Mac.
 3. `python3 import_whatsapp.py ~/Downloads/"WhatsApp Chat - <name>.zip"` (add `--dry` to preview; photos go to a temp folder)
    - runs `claude -p` on the chat + current sheet: names/prices/categories each post, one item per photo for "any piece X shekels" posts, crops photos showing several items, skips anything already in the sheet, Room = `Clothes` for clothing/shoes
-   - copies new photos into `photos/`, commits + pushes them
+   - copies new photos into the Drive `Moving Sale Photos` folder, waits for sync, uses their Drive links as Photo URL
    - copies sheet rows (columns A-H) to the clipboard and prints the cell to paste at
    - prints suggested status changes from messages like `sold - green toys wagon` (apply by hand)
 4. Review the pasted rows. Takes ~2 min; each run re-asks Claude, so wording can vary.
 
 Export has no reactions and no reply context, so "sold" messages must name the item.
 
-Re-export the whole chat each time; photos already in `photos/` are skipped.
+Re-export the whole chat each time; photos already in the Drive folder are skipped.
 
 ## Updating the live site
 

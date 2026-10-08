@@ -248,6 +248,8 @@ const renderState = { filtered: [], shown: 0, lang: "en" };
 function buildCard(it, lang) {
   const t = I18N[lang];
   const claimed = it.Status === "Sold" || it.Status === "Given Away";
+  // Drive share links (…/file/d/ID/view, ?id=ID) aren't images; rewrite to Drive's direct image endpoint.
+  const driveImg = u => { const m = u.match(/drive\.google\.com\/.*(?:\/d\/|[?&]id=)([\w-]+)/); return m ? `https://lh3.googleusercontent.com/d/${m[1]}=w1000` : u; };
   const card = document.createElement("div");
   card.className = "card" + (claimed ? " claimed" : "");
   const statusClass = it.Status.toLowerCase().replace(/\s+/g, "-");
@@ -255,7 +257,7 @@ function buildCard(it, lang) {
   const category = localField(it, lang, "Category");
   const description = localField(it, lang, "Description");
   card.innerHTML = `
-    ${it["Photo URL"] ? `<img src="${it["Photo URL"]}" alt="${name}" loading="lazy" class="thumb" onerror="this.remove()">` : ""}
+    ${it["Photo URL"] ? `<img src="${driveImg(it["Photo URL"])}" alt="${name}" loading="lazy" class="thumb" onerror="this.remove()">` : ""}
     <div class="body">
       <h3>${name}</h3>
       ${category ? `<div class="cat">${category}</div>` : ""}
