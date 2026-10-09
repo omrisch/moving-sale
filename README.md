@@ -4,7 +4,7 @@ Static site. Google Sheet is the database — edit the sheet, the site updates. 
 
 Live at: **https://omrisch.github.io/moving-sale/**
 Repo: **https://github.com/omrisch/moving-sale**
-Sheet (edit): **https://docs.google.com/spreadsheets/d/1rt4IIMhyQUcWFyh_gl7EJU0c6Qdq-wC74w8ZmzGJ42k/edit**
+Sheet (edit): in Google Drive as "Moving Sale" (shared with Omri + Estella only; link deliberately kept out of this public repo)
 
 ## Files
 
