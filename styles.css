@@ -46,13 +46,19 @@ header p{margin:0;color:rgba(255,255,255,.9);font-size:.95rem;}
    these put the actual text direction back so Hebrew content still reads correctly inside them. */
 html[dir="rtl"] .card,html[dir="rtl"] .filters button,html[dir="rtl"] .controls input,html[dir="rtl"] .controls span{direction:rtl;}
 .card img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--border);}
-.card{cursor:zoom-in;}
-#imgDialog{padding:0;border:none;border-radius:8px;background:transparent;max-width:90vw;max-height:90vh;}
-#imgDialog img{display:block;max-width:90vw;max-height:75vh;cursor:zoom-out;}
-#imgDialogPhotos{display:flex;flex-direction:column;gap:4px;}
-#imgDialogText{background:#fff;padding:12px 16px;max-width:min(90vw,600px);}
-#imgDialogText .desc{color:var(--muted);white-space:pre-line;}
-#imgDialog::backdrop{background:rgba(0,0,0,.7);}
+.card{cursor:pointer;}
+#itemView{padding:0;border:none;border-radius:12px;width:min(94vw,560px);max-height:92vh;overflow-y:auto;}
+#itemView::backdrop{background:rgba(0,0,0,.6);}
+.view-close{position:sticky;top:8px;float:right;margin:8px 8px -40px 0;z-index:1;width:32px;height:32px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:1rem;cursor:pointer;}
+.view-main{display:block;width:100%;max-height:60vh;object-fit:contain;background:#111;}
+.view-thumbs{display:flex;gap:6px;padding:8px 16px 0;overflow-x:auto;direction:ltr;}
+.view-thumbs img{width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:pointer;opacity:.6;border:2px solid transparent;}
+.view-thumbs img.active{opacity:1;border-color:var(--accent);}
+.view-text{padding:12px 20px 20px;display:flex;flex-direction:column;gap:6px;}
+.view-text h2{margin:0 0 4px;font-size:1.3rem;padding-right:32px;}
+.view-text dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:0 0 8px;font-size:.9rem;}
+.view-text dt{color:var(--muted);}
+.view-text dd{margin:0;white-space:pre-line;}
 .card .body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:4px;flex:1;}
 .card h3{margin:0;font-size:1.05rem;}
 .card .cat{color:var(--accent);font-size:.8rem;font-weight:600;}

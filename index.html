@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Moving Sale</title>
 <link rel="stylesheet" href="styles.css">
+<!-- Visitor stats: https://omrisch.goatcounter.com (no cookies). Admins are skipped via localStorage "skipgc". -->
+<script data-goatcounter="https://omrisch.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
 </head>
 <body>
 
@@ -61,7 +63,7 @@
     <div id="scrollSentinel"></div>
   </main>
 </div>
-<dialog id="imgDialog"><div id="imgDialogPhotos"></div><div id="imgDialogText"></div></dialog>
+<dialog id="itemView"><button class="view-close" aria-label="Close">✕</button><div id="itemViewBody"></div></dialog>
 <button id="cartBtn" class="cart-btn" hidden></button>
 <dialog id="cartDialog">
   <div class="cart-head"><h3 id="cartTitle"></h3><button id="cartClose" aria-label="Close">✕</button></div>
@@ -148,6 +150,7 @@ const I18N = {
     sortDate: "Date (soonest)",
     sortRoom: "Room (A→Z)",
     linkToItem: "More info",
+    fields: { category: "Category", room: "Room", price: "Price", status: "Status", available: "Available from", description: "Description" },
     waMessage: (name, priceText) => `Hi! I'm interested in "${name}"${priceText ? ` (${priceText})` : ""} from the moving sale. Is it still available?`,
     addToCart: "+ Add to my list",
     inCart: "✓ On my list",
@@ -183,6 +186,7 @@ const I18N = {
     sortDate: "תאריך (הקרוב ביותר)",
     sortRoom: "חדר (א-ת)",
     linkToItem: "מידע נוסף",
+    fields: { category: "קטגוריה", room: "חדר", price: "מחיר", status: "סטטוס", available: "זמין החל מ", description: "תיאור" },
     waMessage: (name, priceText) => `היי! מתעניין/ת ב"${name}"${priceText ? ` (${priceText})` : ""} ממכירת המעבר. זה עדיין קיים?`,
     addToCart: "+ הוספה לרשימה",
     inCart: "✓ ברשימה",
@@ -420,7 +424,51 @@ new IntersectionObserver(entries => {
   if (entries[0].isIntersecting) fillViewport();
 }, { rootMargin: "300px" }).observe(document.getElementById("scrollSentinel"));
 
-// Click a card to open its photo enlarged + full description in a native <dialog>; click anywhere to close.
+// Click a card to see the item in a dialog: all photos + every detail, read-only.
+function openItemView(it) {
+  const lang = renderState.lang, t = I18N[lang], f = t.fields, photos = photoUrls(it);
+  const row = (label, value) => value ? `<dt>${label}</dt><dd>${value}</dd>` : "";
+  const description = localField(it, lang, "Description");
+  const view = document.getElementById("itemView");
+  view._item = it;
+  document.getElementById("itemViewBody").innerHTML = `
+    ${photos.length ? `<img class="view-main" src="${photos[0]}" alt="">` : ""}
+    ${photos.length > 1 ? `<div class="view-thumbs">${photos.map((u, i) => `<img src="${u}" alt=""${i ? "" : ` class="active"`}>`).join("")}</div>` : ""}
+    <div class="view-text">
+      <h2>${localField(it, lang, "Item")}</h2>
+      <dl>
+        ${row(f.category, localField(it, lang, "Category"))}
+        ${row(f.room, it.Room)}
+        ${row(f.price, priceText(it, lang))}
+        ${row(f.status, `<span class="badge ${it.Status.toLowerCase().replace(/\s+/g, "-")}">${localStatus(it, lang)}</span>`)}
+        ${row(f.available, it.Date && localDate(it, lang))}
+        ${row(f.description, description && formatDescription(description, lang))}
+      </dl>
+      ${isClaimed(it) ? "" : `<a class="wa-btn" href="${whatsappLink(it, lang)}" target="_blank" rel="noopener">${t.whatsapp}</a><button class="cart-toggle"></button>`}
+    </div>`;
+  syncCartToggle(view);
+  view.showModal();
+  view.scrollTop = 0;
+}
+
+document.getElementById("itemView").addEventListener("click", e => {
+  const view = e.currentTarget;
+  if (e.target === view || e.target.closest(".view-close")) return view.close(); // backdrop or ✕
+  const thumb = e.target.closest(".view-thumbs img");
+  if (thumb) {
+    view.querySelector(".view-main").src = thumb.src;
+    view.querySelectorAll(".view-thumbs img").forEach(i => i.classList.toggle("active", i === thumb));
+  }
+  if (e.target.closest(".cart-toggle")) {
+    const id = view._item.id;
+    cart = cart.includes(id) ? cart.filter(c => c !== id) : [...cart, id];
+    saveCart();
+    syncCartToggle(view);
+    document.querySelectorAll(".card").forEach(syncCartToggle);
+    renderCart();
+  }
+});
+
 document.getElementById("grid").addEventListener("click", e => {
   const card = e.target.closest(".card");
   if (e.target.closest(".cart-toggle")) {
@@ -433,15 +481,7 @@ document.getElementById("grid").addEventListener("click", e => {
   }
   if (e.target.closest(".admin-edit")) return openItemForm(card._item);
   if (e.target.closest(".admin-delete")) return deleteItem(card._item);
-  if (card && !e.target.closest("a, select, button")) {
-    document.getElementById("imgDialogPhotos").innerHTML =
-      photoUrls(card._item).map(u => `<img src="${u}" alt="" onerror="this.remove()">`).join("");
-    const desc = card.querySelector(".desc");
-    document.getElementById("imgDialogText").innerHTML =
-      `<h3>${card.querySelector("h3").innerHTML}</h3>${desc ? `<div class="desc">${desc.innerHTML}</div>` : ""}`;
-    document.getElementById("imgDialog").showModal();
-    return;
-  }
+  if (card && !e.target.closest("a, select, button")) return openItemView(card._item);
   // ponytail: global cooldown, not per-button — deters rapid repeat WhatsApp clicks, not real spam
   if (e.target.classList.contains("wa-btn")) {
     const now = Date.now();
@@ -469,7 +509,6 @@ document.getElementById("grid").addEventListener("change", async e => {
 });
 let lastWaClick = 0;
 const WA_COOLDOWN_MS = 3000;
-document.getElementById("imgDialog").addEventListener("click", e => e.currentTarget.close());
 document.getElementById("cartBtn").onclick = () => { renderCart(); document.getElementById("cartDialog").showModal(); };
 document.getElementById("cartClose").onclick = () => document.getElementById("cartDialog").close();
 document.getElementById("cartDialog").addEventListener("click", e => {
@@ -517,6 +556,7 @@ async function init() {
   isAdmin = session?.user?.app_metadata?.role === "admin";
   document.getElementById("adminBar").hidden = !isAdmin;
   document.getElementById("loginBtn").hidden = isAdmin;
+  try { isAdmin ? localStorage.setItem("skipgc", "t") : localStorage.removeItem("skipgc"); } catch {}
 
   function applyStaticText() {
     const t = I18N[lang];

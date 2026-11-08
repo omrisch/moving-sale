@@ -75,5 +75,7 @@ then visit `http://localhost:8000`.
 - **WhatsApp button** per item, pre-filled with the item name + price (`WHATSAPP_NUMBER` in `index.html`). Hidden on Sold/Given Away.
 - **My list (cart)** — "+ Add to my list" on each card; floating "My list (n)" opens the list with a total and sends one WhatsApp message listing everything. Saved per-browser, no accounts; sold/deleted items drop off on next visit.
 - **Several photos per item** — first is the card cover (star a photo in the edit form to make it the cover); clicking a card shows all of them.
+- **Item view** — clicking a card opens all photos + every detail read-only, with WhatsApp / Add to my list.
+- **Visitor stats** — https://omrisch.goatcounter.com (no cookies). Your own visits aren't counted while logged in as admin.
 - **Pickup info page** (`info.html`) — two maps showing an approximate circle, not an exact pin. Exact address only over WhatsApp.
 
