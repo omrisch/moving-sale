@@ -20,6 +20,11 @@
 
 <div class="layout">
   <aside class="sidebar">
+    <button class="admin-login-btn" id="loginBtn">Admin login</button>
+    <div class="controls admin-bar" id="adminBar" hidden>
+      <button id="addItemBtn">+ Add item</button>
+      <button id="logoutBtn">Log out</button>
+    </div>
     <div class="controls">
       <input type="search" id="search" placeholder="Search items...">
     </div>
@@ -50,23 +55,68 @@
   </aside>
   <main class="content">
     <div id="loading"><div class="spinner"></div><span id="loadingText">Loading items…</span></div>
-    <div id="error" style="display:none">Couldn't load the list. Check the SHEET_CSV_URL in index.html.</div>
+    <div id="error" style="display:none">Couldn't load the list. Try again in a minute.</div>
     <div id="empty" style="display:none">No items match.</div>
     <div id="grid"></div>
     <div id="scrollSentinel"></div>
   </main>
 </div>
-<dialog id="imgDialog"><img id="imgDialogPhoto" alt=""><div id="imgDialogText"></div></dialog>
+<dialog id="imgDialog"><div id="imgDialogPhotos"></div><div id="imgDialogText"></div></dialog>
+<button id="cartBtn" class="cart-btn" hidden></button>
+<dialog id="cartDialog">
+  <div class="cart-head"><h3 id="cartTitle"></h3><button id="cartClose" aria-label="Close">✕</button></div>
+  <ul id="cartList"></ul>
+  <div id="cartTotal"></div>
+  <a id="cartSend" class="wa-btn" target="_blank" rel="noopener"></a>
+</dialog>
+<!-- Admin only. English-only on purpose: it's just us. -->
+<dialog id="loginDialog">
+  <form id="loginForm" class="admin-form">
+    <h3>Admin login</h3>
+    <label>Email<input name="email" type="email" autocomplete="username" required></label>
+    <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+    <div class="form-error" id="loginError"></div>
+    <div class="form-actions"><button type="button" data-close>Cancel</button><button type="submit">Log in</button></div>
+  </form>
+</dialog>
+<dialog id="itemDialog">
+  <form id="itemForm" class="admin-form">
+    <h3 id="itemFormTitle">Add item</h3>
+    <label>Name<input name="item" required></label>
+    <label>Name (Hebrew)<input name="item_he" dir="rtl"></label>
+    <label>Category<input name="category" list="categoryList"></label>
+    <label>Category (Hebrew)<input name="category_he" dir="rtl"></label>
+    <label>Room<input name="room" list="roomList"></label>
+    <label>Price (₪)<input name="price" type="number" min="0" step="1" inputmode="numeric"></label>
+    <label>Status<select name="status"></select></label>
+    <label>Available from<input name="available_from" type="date"></label>
+    <label>Description<textarea name="description" rows="3"></textarea></label>
+    <label>Description (Hebrew)<textarea name="description_he" rows="3" dir="rtl"></textarea></label>
+    <div id="formPhotos"></div>
+    <label>Add photos<input type="file" id="photoInput" accept="image/*" multiple></label>
+    <div class="form-error" id="formError"></div>
+    <div class="form-actions"><button type="button" data-close>Cancel</button><button type="submit" id="itemSave">Save</button></div>
+  </form>
+  <datalist id="categoryList"></datalist><datalist id="roomList"></datalist>
+</dialog>
 
-<script>
-// ponytail: Google Sheet published-to-web CSV is the entire database. No backend.
-// Set up: File > Share > Publish to web > choose the sheet tab > CSV > copy link.
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQAxZWivvHSeibbno0Yd1JLYMfrIfKNCkxnhjeIXd_iDPEgvLwucRUJLi5DniibgYvERiq6KUcoH3jX/pub?gid=0&single=true&output=csv";
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
+// Supabase holds the items + photos. URL and publishable key are meant to be public: the
+// database rules in schema.sql decide what visitors can read (no Inactive items) and that only
+// admins can write.
+const SUPABASE_URL = "https://seuigtqgmjpmljbkgtur.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_Q0c-IvCCLF4e5-o5fs3ZXQ_4xwZZS2f";
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const PHOTO_BUCKET = "item-photos";
 
 // WhatsApp number (with country code, no + or spaces) that "Message on WhatsApp" links to.
 const WHATSAPP_NUMBER = "972547998212";
 
 const STATUSES = ["For Sale", "Free", "Available Soon", "Reserved", "Sold", "Given Away"];
+const ALL_STATUSES = [...STATUSES, "Inactive"]; // Inactive = hidden from visitors, admins still see it
+
+let isAdmin = false; // set in init() from the saved login
 
 // ponytail: fixed UI vocab is translated by hand here. Free-text item data (Item/Category/Description)
 // is translated by adding "Item (HE)" / "Category (HE)" / "Description (HE)" columns in the Sheet —
@@ -79,7 +129,7 @@ const I18N = {
     searchPlaceholder: "Search items...",
     priceLabel: "Price (₪):",
     loading: "Loading items…",
-    error: "Couldn't load the list. Check the SHEET_CSV_URL in index.html.",
+    error: "Couldn't load the list. Try again in a minute.",
     empty: "No items match.",
     freePrice: "Free",
     whatsapp: "Message on WhatsApp",
@@ -87,7 +137,7 @@ const I18N = {
     allStatuses: "All statuses",
     allCategories: "All categories",
     allRooms: "All rooms",
-    statusLabel: { "For Sale": "For Sale", "Free": "Free", "Available Soon": "Available Soon", "Reserved": "Reserved", "Sold": "Sold", "Given Away": "Given Away" },
+    statusLabel: { "For Sale": "For Sale", "Free": "Free", "Available Soon": "Available Soon", "Reserved": "Reserved", "Sold": "Sold", "Given Away": "Given Away", "Inactive": "Inactive" },
     availableFrom: date => `Available from ${date}`,
     dateLabel: "Available by:",
     sortLabel: "Sort:",
@@ -99,6 +149,13 @@ const I18N = {
     sortRoom: "Room (A→Z)",
     linkToItem: "More info",
     waMessage: (name, priceText) => `Hi! I'm interested in "${name}"${priceText ? ` (${priceText})` : ""} from the moving sale. Is it still available?`,
+    addToCart: "+ Add to my list",
+    inCart: "✓ On my list",
+    cartBtn: n => `My list (${n})`,
+    cartTitle: "My list",
+    cartTotal: "Total",
+    cartSend: "Send list on WhatsApp",
+    waList: (lines, total) => `Hi! I'm interested in these from the moving sale:\n${lines}\n\nTotal: ${total}. Are they still available?`,
   },
   he: {
     dir: "rtl",
@@ -107,7 +164,7 @@ const I18N = {
     searchPlaceholder: "חיפוש פריטים...",
     priceLabel: "מחיר (₪):",
     loading: "טוען פריטים…",
-    error: "טעינת הרשימה נכשלה. בדקו את SHEET_CSV_URL בקובץ.",
+    error: "טעינת הרשימה נכשלה. נסו שוב בעוד דקה.",
     empty: "לא נמצאו פריטים מתאימים.",
     freePrice: "ללא תשלום",
     whatsapp: "שליחת הודעה בוואטסאפ",
@@ -115,7 +172,7 @@ const I18N = {
     allStatuses: "כל הסטטוסים",
     allCategories: "כל הקטגוריות",
     allRooms: "כל החדרים",
-    statusLabel: { "For Sale": "למכירה", "Free": "ללא תשלום", "Available Soon": "בקרוב", "Reserved": "שמור", "Sold": "נמכר", "Given Away": "נמסר" },
+    statusLabel: { "For Sale": "למכירה", "Free": "ללא תשלום", "Available Soon": "בקרוב", "Reserved": "שמור", "Sold": "נמכר", "Given Away": "נמסר", "Inactive": "מוסתר" },
     availableFrom: date => `זמין החל מ-${date}`,
     dateLabel: "זמין עד תאריך:",
     sortLabel: "מיון:",
@@ -127,39 +184,15 @@ const I18N = {
     sortRoom: "חדר (א-ת)",
     linkToItem: "מידע נוסף",
     waMessage: (name, priceText) => `היי! מתעניין/ת ב"${name}"${priceText ? ` (${priceText})` : ""} ממכירת המעבר. זה עדיין קיים?`,
+    addToCart: "+ הוספה לרשימה",
+    inCart: "✓ ברשימה",
+    cartBtn: n => `הרשימה שלי (${n})`,
+    cartTitle: "הרשימה שלי",
+    cartTotal: "סה״כ",
+    cartSend: "שליחת הרשימה בוואטסאפ",
+    waList: (lines, total) => `היי! מתעניין/ת בפריטים האלה ממכירת המעבר:\n${lines}\n\nסה״כ: ${total}. הם עדיין קיימים?`,
   },
 };
-
-function parseCSV(text) {
-  const rows = [];
-  let row = [], field = "", inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; }
-        else inQuotes = false;
-      } else field += c;
-    } else {
-      if (c === '"') inQuotes = true;
-      else if (c === ',') { row.push(field); field = ""; }
-      else if (c === '\n' || c === '\r') {
-        if (c === '\r' && text[i + 1] === '\n') i++;
-        row.push(field); field = "";
-        if (row.length > 1 || row[0] !== "") rows.push(row);
-        row = [];
-      } else field += c;
-    }
-  }
-  if (field !== "" || row.length) { row.push(field); rows.push(row); }
-  if (!rows.length) return [];
-  const headers = rows[0].map(h => h.trim());
-  return rows.slice(1).filter(r => r.some(v => v.trim() !== "")).map(r => {
-    const obj = {};
-    headers.forEach((h, i) => obj[h] = (r[i] || "").trim());
-    return obj;
-  });
-}
 
 // ponytail: hand-rolled fuzzy match (subsequence match per query word) instead of a fuzzy-search library
 function isSubsequence(needle, haystack) {
@@ -179,20 +212,20 @@ function fuzzyMatch(query, text) {
   return words.every(w => tokens.some(tok => isSubsequence(w, tok)));
 }
 
-// (HE) columns are often filled via a live GOOGLETRANSLATE() formula in the sheet — while it's still
-// resolving (or on a translation error), the cell can hold literal "Loading..." or "#VALUE!"/"#N/A"
-// instead of real text. Treat those as absent so buyers never see the raw formula state.
-function isTranslatePlaceholder(v) {
-  return !v || v === "Loading..." || /^#[A-Z/]+!?$/.test(v);
-}
-
 // Displayed text for an item field: falls back to the English column if no "(HE)" translation is filled in.
 function localField(it, lang, field) {
-  if (lang === "he") {
-    const he = it[`${field} (HE)`];
-    if (!isTranslatePlaceholder(he)) return he;
-  }
-  return it[field] || "";
+  return (lang === "he" && it[`${field} (HE)`]) || it[field] || "";
+}
+
+// Database row -> the field names the rest of this page uses (they date from the sheet era).
+function toItem(r, i) {
+  return {
+    id: r.id, _row: i, photos: r.photos, Status: r.status, Room: r.room || "",
+    Item: r.item, "Item (HE)": r.item_he || "",
+    Category: r.category || "", "Category (HE)": r.category_he || "",
+    Description: r.description || "", "Description (HE)": r.description_he || "",
+    Price: r.price == null ? "" : String(r.price), Date: r.available_from || "",
+  };
 }
 
 // Strips a trailing product URL out of Description text before it's used as search haystack —
@@ -213,12 +246,56 @@ function formatDescription(desc, lang) {
   return before ? `${before} — ${link}` : link;
 }
 
+const priceText = (it, lang) => it.Status === "Free" ? I18N[lang].freePrice : (it.Price ? `₪${it.Price}` : "");
+const isClaimed = it => it.Status === "Sold" || it.Status === "Given Away";
+const waUrl = msg => `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
+
 function whatsappLink(it, lang) {
-  const t = I18N[lang];
-  const name = localField(it, lang, "Item");
-  const priceText = it.Status === "Free" ? t.freePrice : (it.Price ? `₪${it.Price}` : "");
-  const msg = t.waMessage(name, priceText);
-  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
+  return waUrl(I18N[lang].waMessage(localField(it, lang, "Item"), priceText(it, lang)));
+}
+
+// photos holds storage paths (uploaded from the admin form) or full URLs (older Drive links).
+// The first is the card cover; the dialog shows all of them. Drive share links aren't images, so
+// they're rewritten to Drive's direct image endpoint.
+const photoUrl = p => {
+  if (!/^https?:/.test(p)) return `${SUPABASE_URL}/storage/v1/object/public/${PHOTO_BUCKET}/${p}`;
+  const m = p.match(/drive\.google\.com\/.*(?:\/d\/|[?&]id=)([\w-]+)/);
+  return m ? `https://lh3.googleusercontent.com/d/${m[1]}=w1000` : p;
+};
+const photoUrls = it => (it.photos || []).map(photoUrl);
+
+// Cart: a list of item ids kept in localStorage. Checkout = one WhatsApp message listing
+// everything, with the total.
+const CART_KEY = "moving-sale-cart";
+let allItems = [];
+let cart = (() => { try { const v = JSON.parse(localStorage.getItem(CART_KEY)); return Array.isArray(v) ? v : []; } catch { return []; } })();
+const saveCart = () => { try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {} };
+const cartItems = () => cart.map(id => allItems.find(it => it.id === id)).filter(Boolean);
+
+function syncCartToggle(card) {
+  const btn = card.querySelector(".cart-toggle");
+  if (!btn) return;
+  const on = cart.includes(card._item.id);
+  btn.classList.toggle("in-cart", on);
+  btn.textContent = I18N[renderState.lang][on ? "inCart" : "addToCart"];
+}
+
+function renderCart() {
+  const lang = renderState.lang, t = I18N[lang], list = cartItems();
+  const btn = document.getElementById("cartBtn");
+  btn.hidden = !list.length;
+  btn.textContent = t.cartBtn(list.length);
+  document.getElementById("cartTitle").textContent = t.cartTitle;
+  document.getElementById("cartList").innerHTML = list.map((it, i) =>
+    `<li><span>${localField(it, lang, "Item")}</span><span class="price">${priceText(it, lang)}</span><button data-i="${i}" aria-label="Remove">✕</button></li>`).join("");
+  // Free = 0; unpriced items just don't add to the total
+  const total = list.reduce((sum, it) => sum + (it.Status === "Free" ? 0 : parseFloat(String(it.Price).replace(/,/g, "")) || 0), 0);
+  document.getElementById("cartTotal").textContent = `${t.cartTotal}: ₪${total}`;
+  const lines = list.map((it, i) => `${i + 1}. ${localField(it, lang, "Item")}${priceText(it, lang) ? ` (${priceText(it, lang)})` : ""}`).join("\n");
+  const send = document.getElementById("cartSend");
+  send.textContent = t.cartSend;
+  send.href = waUrl(t.waList(lines, `₪${total}`));
+  if (!list.length && document.getElementById("cartDialog").open) document.getElementById("cartDialog").close();
 }
 
 // ponytail: Date column is free text; parsed with new Date() so ISO ("2026-08-01") sorts/filters
@@ -230,16 +307,8 @@ function parseItemDate(it) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-// Optional "Status (HE)"/"Date (HE)" columns override the fixed I18N status label / raw date
-// string for Hebrew display, same fallback-to-English pattern as localField().
-function localStatus(it, lang) {
-  if (lang === "he" && !isTranslatePlaceholder(it["Status (HE)"])) return it["Status (HE)"];
-  return I18N[lang].statusLabel[it.Status] || it.Status || "";
-}
-function localDate(it, lang) {
-  if (lang === "he" && !isTranslatePlaceholder(it["Date (HE)"])) return it["Date (HE)"];
-  return it.Date;
-}
+const localStatus = (it, lang) => I18N[lang].statusLabel[it.Status] || it.Status || "";
+const localDate = (it, lang) => parseItemDate(it)?.toLocaleDateString(lang === "he" ? "he-IL" : "en-GB") || it.Date;
 
 // ponytail: render in batches on scroll instead of all ~50 cards (+ their images) at once
 const BATCH_SIZE = 8;
@@ -247,17 +316,18 @@ const renderState = { filtered: [], shown: 0, lang: "en" };
 
 function buildCard(it, lang) {
   const t = I18N[lang];
-  const claimed = it.Status === "Sold" || it.Status === "Given Away";
-  // Drive share links (…/file/d/ID/view, ?id=ID) aren't images; rewrite to Drive's direct image endpoint.
-  const driveImg = u => { const m = u.match(/drive\.google\.com\/.*(?:\/d\/|[?&]id=)([\w-]+)/); return m ? `https://lh3.googleusercontent.com/d/${m[1]}=w1000` : u; };
+  const claimed = isClaimed(it);
+  const photos = photoUrls(it);
   const card = document.createElement("div");
+  card._item = it;
   card.className = "card" + (claimed ? " claimed" : "");
   const statusClass = it.Status.toLowerCase().replace(/\s+/g, "-");
   const name = localField(it, lang, "Item") || "Untitled";
   const category = localField(it, lang, "Category");
   const description = localField(it, lang, "Description");
   card.innerHTML = `
-    ${it["Photo URL"] ? `<img src="${driveImg(it["Photo URL"])}" alt="${name}" loading="lazy" class="thumb" onerror="this.remove()">` : ""}
+    ${photos.length ? `<img src="${photos[0]}" alt="${name}" loading="lazy" class="thumb" onerror="this.remove()">` : ""}
+    ${photos.length > 1 ? `<span class="photo-count">${photos.length} 📷</span>` : ""}
     <div class="body">
       <h3>${name}</h3>
       ${category ? `<div class="cat">${category}</div>` : ""}
@@ -267,8 +337,14 @@ function buildCard(it, lang) {
         ${it.Status === "Available Soon" && it.Date ? "" : `<span class="badge ${statusClass}">${localStatus(it, lang)}</span>`}
       </div>
       ${it.Date ? `<span class="badge available-soon">${t.availableFrom(localDate(it, lang))}</span>` : ""}
+      ${isAdmin ? `<div class="admin-row">
+        <select class="admin-status">${ALL_STATUSES.map(s => `<option${s === it.Status ? " selected" : ""}>${s}</option>`).join("")}</select>
+        <button class="admin-edit">Edit</button><button class="admin-delete">Delete</button>
+      </div>` : ""}
       ${claimed ? "" : `<a class="wa-btn" href="${whatsappLink(it, lang)}" target="_blank" rel="noopener">${t.whatsapp}</a>`}
+      ${claimed ? "" : `<button class="cart-toggle"></button>`}
     </div>`;
+  syncCartToggle(card);
   return card;
 }
 
@@ -337,6 +413,7 @@ function render(items, filters, lang) {
   renderState.shown = 0;
   renderState.lang = lang;
   fillViewport();
+  renderCart();
 }
 
 new IntersectionObserver(entries => {
@@ -346,11 +423,19 @@ new IntersectionObserver(entries => {
 // Click a card to open its photo enlarged + full description in a native <dialog>; click anywhere to close.
 document.getElementById("grid").addEventListener("click", e => {
   const card = e.target.closest(".card");
-  if (card && !e.target.closest("a")) {
-    const img = card.querySelector(".thumb");
-    const photo = document.getElementById("imgDialogPhoto");
-    photo.hidden = !img;
-    if (img) photo.src = img.src;
+  if (e.target.closest(".cart-toggle")) {
+    const id = card._item.id;
+    cart = cart.includes(id) ? cart.filter(c => c !== id) : [...cart, id];
+    saveCart();
+    syncCartToggle(card);
+    renderCart();
+    return;
+  }
+  if (e.target.closest(".admin-edit")) return openItemForm(card._item);
+  if (e.target.closest(".admin-delete")) return deleteItem(card._item);
+  if (card && !e.target.closest("a, select, button")) {
+    document.getElementById("imgDialogPhotos").innerHTML =
+      photoUrls(card._item).map(u => `<img src="${u}" alt="" onerror="this.remove()">`).join("");
     const desc = card.querySelector(".desc");
     document.getElementById("imgDialogText").innerHTML =
       `<h3>${card.querySelector("h3").innerHTML}</h3>${desc ? `<div class="desc">${desc.innerHTML}</div>` : ""}`;
@@ -364,9 +449,38 @@ document.getElementById("grid").addEventListener("click", e => {
     lastWaClick = now;
   }
 });
+// Admin status change: saved straight to the database, card updated in place.
+document.getElementById("grid").addEventListener("change", async e => {
+  if (!e.target.classList.contains("admin-status")) return;
+  const sel = e.target, card = sel.closest(".card"), it = card._item;
+  sel.disabled = true;
+  try {
+    const { data, error } = await supabase.from("items").update({ status: sel.value }).eq("id", it.id).select("id");
+    if (error) throw error;
+    // The database rules silently skip rows you may not change, so check one was saved.
+    if (!data.length) throw new Error("not saved, try logging in again");
+    it.Status = sel.value;
+    card.replaceWith(buildCard(it, renderState.lang));
+  } catch (err) {
+    alert(`Couldn't update: ${err.message}`);
+    sel.value = it.Status;
+    sel.disabled = false;
+  }
+});
 let lastWaClick = 0;
 const WA_COOLDOWN_MS = 3000;
 document.getElementById("imgDialog").addEventListener("click", e => e.currentTarget.close());
+document.getElementById("cartBtn").onclick = () => { renderCart(); document.getElementById("cartDialog").showModal(); };
+document.getElementById("cartClose").onclick = () => document.getElementById("cartDialog").close();
+document.getElementById("cartDialog").addEventListener("click", e => {
+  if (e.target === e.currentTarget) return e.currentTarget.close(); // backdrop click
+  const rm = e.target.closest("button[data-i]");
+  if (!rm) return;
+  cart = cartItems().filter((_, i) => i !== +rm.dataset.i).map(it => it.id);
+  saveCart();
+  renderCart();
+  document.querySelectorAll(".card").forEach(syncCartToggle);
+});
 
 function buildFilterBar(containerId, allLabel, values, counts, labelFor, onChange) {
   const bar = document.getElementById(containerId);
@@ -399,6 +513,11 @@ async function init() {
 
   let lang = localStorage.getItem("moving-sale-lang") || "en";
 
+  const { data: { session } } = await supabase.auth.getSession();
+  isAdmin = session?.user?.app_metadata?.role === "admin";
+  document.getElementById("adminBar").hidden = !isAdmin;
+  document.getElementById("loginBtn").hidden = isAdmin;
+
   function applyStaticText() {
     const t = I18N[lang];
     document.documentElement.lang = lang;
@@ -425,14 +544,19 @@ async function init() {
   applyStaticText();
 
   try {
-    const res = await fetch(SHEET_CSV_URL, { cache: "no-store" });
-    if (!res.ok) throw new Error("bad response");
-    // "Inactive" items are hidden entirely — not counted, not filterable, not rendered.
-    const items = parseCSV(await res.text()).map((it, i) => (it._row = i, it)).filter(it => it.Status !== "Inactive" && it.Item);
+    // Visitors never receive Inactive items (database rule); admins get them, to reactivate.
+    const { data, error: dbError } = await supabase.from("items").select("*").order("created_at");
+    if (dbError) throw dbError;
+    const items = data.map(toItem);
     loading.style.display = "none";
+    allItems = items;
+    // Only prune after a successful load, so a failed fetch never empties someone's list.
+    cart = cart.filter(id => items.some(it => it.id === id && !isClaimed(it)));
+    saveCart();
 
+    const statuses = isAdmin ? ALL_STATUSES : STATUSES;
     const statusCounts = { All: items.length };
-    STATUSES.forEach(s => statusCounts[s] = items.filter(i => i.Status === s).length);
+    statuses.forEach(s => statusCounts[s] = items.filter(i => i.Status === s).length);
     const categories = [...new Set(items.map(i => i.Category).filter(Boolean))].sort();
     const categoryCounts = { All: items.length };
     categories.forEach(c => categoryCounts[c] = items.filter(i => i.Category === c).length);
@@ -466,7 +590,7 @@ async function init() {
       const prevStatus = getStatus ? getStatus() : "All";
       const prevCategory = getCategory ? getCategory() : "All";
       const prevRoom = getRoom ? getRoom() : "All";
-      getStatus = buildFilterBar("statusFilters", t.allStatuses, STATUSES, statusCounts, s => t.statusLabel[s] || s, rerender);
+      getStatus = buildFilterBar("statusFilters", t.allStatuses, statuses, statusCounts, s => t.statusLabel[s] || s, rerender);
       getCategory = buildFilterBar("categoryFilters", t.allCategories, categories, categoryCounts, categoryLabel, rerender);
       getRoom = buildFilterBar("roomFilters", t.allRooms, rooms, roomCounts, r => r, rerender);
       rerender();
@@ -494,15 +618,6 @@ async function init() {
   }
 }
 
-// ponytail: smallest self-check for the hand-rolled CSV parser (no test framework needed)
-(function selfTestParseCSV() {
-  const sample = 'Item,Price\n"Desk, Oak",50\n"Lamp ""tall""",10\n';
-  const out = parseCSV(sample);
-  console.assert(out.length === 2, "parseCSV: expected 2 rows", out);
-  console.assert(out[0].Item === "Desk, Oak" && out[0].Price === "50", "parseCSV: quoted comma failed", out[0]);
-  console.assert(out[1].Item === 'Lamp "tall"', "parseCSV: escaped quote failed", out[1]);
-})();
-
 (function selfTestFuzzyMatch() {
   console.assert(fuzzyMatch("dsk oak", "Desk, Oak table") === true, "fuzzyMatch: subsequence should match");
   console.assert(fuzzyMatch("lamp", "Dutch Oven") === false, "fuzzyMatch: unrelated text should not match");
@@ -516,6 +631,136 @@ async function init() {
   console.assert(localField(withoutHe, "he", "Item") === "Chair", "localField: should fall back to English");
   console.assert(localField(withHe, "en", "Item") === "Lamp", "localField: English lang should ignore HE column");
 })();
+
+// ---------- Admin: login, add/edit/delete items, photo upload ----------
+
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => b.closest("dialog").close());
+
+document.getElementById("loginForm").onsubmit = async e => {
+  e.preventDefault();
+  const f = new FormData(e.target), err = document.getElementById("loginError");
+  err.textContent = "";
+  const { data, error } = await supabase.auth.signInWithPassword({ email: f.get("email"), password: f.get("password") });
+  if (error) return err.textContent = error.message;
+  if (data.user.app_metadata?.role !== "admin") {
+    await supabase.auth.signOut();
+    return err.textContent = "This account isn't an admin.";
+  }
+  location.reload();
+};
+document.getElementById("loginBtn").onclick = () => document.getElementById("loginDialog").showModal();
+document.getElementById("logoutBtn").onclick = async () => { await supabase.auth.signOut(); location.reload(); };
+document.getElementById("addItemBtn").onclick = () => openItemForm(null);
+
+// Photos are re-encoded in the browser before upload: max 1600px, WebP (JPEG if the browser
+// can't make WebP). Re-encoding through a canvas also drops metadata such as GPS location.
+async function preparePhoto(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const canvas = Object.assign(document.createElement("canvas"), { width: Math.round(bmp.width * scale), height: Math.round(bmp.height * scale) });
+  canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  const encode = type => new Promise(r => canvas.toBlob(r, type, 0.85));
+  const webp = await encode("image/webp");
+  return webp?.type === "image/webp" ? webp : encode("image/jpeg");
+}
+
+const removePhotos = paths => {
+  const own = paths.filter(p => !/^https?:/.test(p));
+  // Best effort: a leftover file only costs a little storage.
+  if (own.length) supabase.storage.from(PHOTO_BUCKET).remove(own).then(({ error }) => error && console.error(error));
+};
+
+let editing = null;  // item being edited, null = new
+let formPhotos = []; // [{path}] already stored, or [{file, src}] picked but not uploaded yet
+
+function renderFormPhotos() {
+  document.getElementById("formPhotos").innerHTML = formPhotos.map((p, i) => `
+    <div class="form-photo"><img src="${p.src || photoUrl(p.path)}" alt="">
+      ${i ? `<button type="button" data-cover="${i}" title="Make cover">★</button>` : `<span class="cover-tag">Cover</span>`}
+      <button type="button" data-remove="${i}" title="Remove">✕</button></div>`).join("");
+}
+document.getElementById("formPhotos").onclick = e => {
+  const cover = e.target.dataset.cover, remove = e.target.dataset.remove;
+  if (cover) formPhotos.unshift(...formPhotos.splice(+cover, 1));
+  if (remove) formPhotos.splice(+remove, 1);
+  renderFormPhotos();
+};
+document.getElementById("photoInput").onchange = e => {
+  formPhotos.push(...[...e.target.files].map(file => ({ file, src: URL.createObjectURL(file) })));
+  e.target.value = "";
+  renderFormPhotos();
+};
+
+function openItemForm(it) {
+  editing = it;
+  const form = document.getElementById("itemForm");
+  form.reset();
+  document.getElementById("itemFormTitle").textContent = it ? "Edit item" : "Add item";
+  document.getElementById("formError").textContent = "";
+  form.status.innerHTML = ALL_STATUSES.map(s => `<option>${s}</option>`).join("");
+  const options = key => [...new Set(allItems.map(i => i[key]).filter(Boolean))].sort().map(v => `<option value="${v}">`).join("");
+  document.getElementById("categoryList").innerHTML = options("Category");
+  document.getElementById("roomList").innerHTML = options("Room");
+  if (it) {
+    form.item.value = it.Item; form.item_he.value = it["Item (HE)"];
+    form.category.value = it.Category; form.category_he.value = it["Category (HE)"];
+    form.room.value = it.Room; form.price.value = it.Price; form.status.value = it.Status;
+    form.available_from.value = it.Date;
+    form.description.value = it.Description; form.description_he.value = it["Description (HE)"];
+  }
+  formPhotos = (it?.photos || []).map(path => ({ path }));
+  renderFormPhotos();
+  document.getElementById("itemDialog").showModal();
+}
+
+document.getElementById("itemForm").onsubmit = async e => {
+  e.preventDefault();
+  const form = e.target, save = document.getElementById("itemSave"), err = document.getElementById("formError");
+  const v = name => form[name].value.trim() || null;
+  save.disabled = true;
+  err.textContent = "";
+  const uploaded = [];
+  try {
+    const photos = [];
+    for (const p of formPhotos) {
+      if (p.path) { photos.push(p.path); continue; }
+      save.textContent = `Uploading photo ${uploaded.length + 1}…`;
+      const blob = await preparePhoto(p.file);
+      const path = `${crypto.randomUUID()}.${blob.type === "image/webp" ? "webp" : "jpg"}`;
+      const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: blob.type, cacheControl: "31536000" });
+      if (error) throw new Error(`Photo upload failed: ${error.message}`);
+      uploaded.push(path);
+      photos.push(path);
+    }
+    save.textContent = "Saving…";
+    const row = {
+      item: v("item"), item_he: v("item_he"), category: v("category"), category_he: v("category_he"),
+      room: v("room"), price: v("price") === null ? null : parseInt(v("price"), 10), status: form.status.value,
+      available_from: v("available_from"), description: v("description"), description_he: v("description_he"), photos,
+    };
+    const q = editing ? supabase.from("items").update(row).eq("id", editing.id) : supabase.from("items").insert(row);
+    const { data, error } = await q.select("id");
+    if (error) throw error;
+    if (!data.length) throw new Error("Not saved. Try logging in again.");
+    if (editing) removePhotos(editing.photos.filter(p => !photos.includes(p)));
+    // ponytail: full reload after a save keeps counts/filters/sort right with zero extra code;
+    // admin-only, so the lost scroll position is fine.
+    location.reload();
+  } catch (error) {
+    removePhotos(uploaded);
+    err.textContent = error.message;
+    save.disabled = false;
+    save.textContent = "Save";
+  }
+};
+
+async function deleteItem(it) {
+  if (!confirm(`Delete "${it.Item}"? This can't be undone.\n(To just hide it, set the status to Inactive.)`)) return;
+  const { data, error } = await supabase.from("items").delete().eq("id", it.id).select("id");
+  if (error || !data.length) return alert(`Couldn't delete: ${error?.message || "try logging in again"}`);
+  removePhotos(it.photos);
+  location.reload();
+}
 
 init();
 </script>

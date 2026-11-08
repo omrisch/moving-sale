@@ -1,58 +1,54 @@
 # Moving Sale
 
-Static site. Google Sheet is the database — edit the sheet, the site updates. No backend, no build step.
+Static site on GitHub Pages; items and photos live in Supabase (free tier). No build step.
+Visitors browse anonymously; only admins (Omri + Estella) can sign in and change things.
 
 Live at: **https://omrisch.github.io/moving-sale/**
 Repo: **https://github.com/omrisch/moving-sale**
-Sheet (edit): in Google Drive as "Moving Sale" (shared with Omri + Estella only; link deliberately kept out of this public repo)
 
 ## Files
 
-- `index.html` — the item listing (search, filters, WhatsApp contact)
+- `index.html` — the item listing (search, filters, cart, WhatsApp contact) + admin login/forms
 - `info.html` — pickup logistics page (approximate location maps)
 - `styles.css` — shared styling for both pages
+- `schema.sql` — the database: `items` table, photo bucket, and the rules (visitors read, admins write)
+- `supa.py` — tiny Supabase client for the local scripts (reads `.env`)
+- `import_whatsapp.py` — WhatsApp chat export -> new items + photos
+- `migrate_from_sheet.py` — one-time copy of the old Google Sheet (done once, kept for reference)
+- `.env` — **not committed**: `SUPABASE_SECRET_KEY=...` and `DATABASE_URL=...`
 
-## Sheet setup
+## Editing items
 
-1. Google Sheet, row 1 headers:
+- **On the site:** "Admin login" at the bottom of the filters. Then "+ Add item", and on each card a
+  status dropdown, Edit and Delete. Photos picked on the phone are resized and stripped of GPS before upload.
+  Status `Inactive` hides an item from visitors (admins still see it).
+- **From Claude (incl. the mobile app):** claude.ai > Customize > Connectors > find **Supabase** (or
+  Add custom connector: `https://mcp.supabase.com/mcp?project_ref=<project ref>&features=database`),
+  sign in with the Supabase account. Then in any chat: "mark the wagon sold", "fill the Hebrew names",
+  "lower all toys by 10 shekels". It edits the `items` table directly. It has full database access, so
+  read what it plans to run before approving anything that isn't about `items`.
+- **ChatGPT:** same connector URL, via developer-mode connectors (check your plan supports it).
 
-   `Item | Category | Price | Status | Photo URL | Description`
+## Setup (once)
 
-   Optional Hebrew translation columns (leave blank to fall back to English):
-
-   `Item (HE) | Category (HE) | Description (HE)`
-
-   - `Status` must be one of: `For Sale`, `Free`, `Available Soon`, `Reserved`, `Sold`, `Given Away`, `Inactive`
-     - `Reserved` shows a purple badge; WhatsApp button stays (people can ask to be next in line).
-     - `Sold` / `Given Away` still show on the site, grayed out, no WhatsApp button.
-     - `Inactive` is fully hidden — not shown, not counted, not filterable. Use it for items not ready to list yet.
-   - `Photo URL`: drop the photo in Drive `My Drive/Moving Sale Photos` (personal account, folder is shared "Anyone with the link"), copy its share link, paste it. Drive share links are rewritten to direct image links by `index.html`; any other public image URL works too
-   - `Price`: number only (₪), leave blank if Free
-
-2. **File → Share → Publish to web** → pick the sheet tab → format **CSV** → Publish → copy the link.
-
-3. In `index.html`, near the top of the `<script>`:
-
-   ```js
-   const SHEET_CSV_URL = "...";
-   ```
-
-   already set to the published link. Only touch this if you republish under a different link.
+1. Supabase project (free) > copy Project URL + publishable key into `SUPABASE_URL` /
+   `SUPABASE_PUBLISHABLE_KEY` in `index.html` (both are public by design).
+2. `.env` with the secret key + database connection string (Connect > Session pooler).
+3. `psql "$DATABASE_URL" -f schema.sql`
+4. Authentication > Sign In / Providers: turn off "Allow new users to sign up". Users > Add user for
+   each admin, then: `update auth.users set raw_app_meta_data = raw_app_meta_data || '{"role":"admin"}' where email = '...';`
 
 ## Adding items from WhatsApp
 
-1. Forward the sale posts (photo + caption) into one dedicated WhatsApp chat (e.g. a group with just the two of you).
-2. Phone: that chat → chat info → **Export Chat → Attach Media** → AirDrop/save the zip to the Mac.
-3. `python3 import_whatsapp.py ~/Downloads/"WhatsApp Chat - <name>.zip"` (add `--dry` to preview; photos go to a temp folder)
-   - runs `claude -p` on the chat + current sheet: names/prices/categories each post, one item per photo for "any piece X shekels" posts, crops photos showing several items, skips anything already in the sheet, Room = `Clothes` for clothing/shoes
-   - copies new photos into the Drive `Moving Sale Photos` folder, waits for sync, uses their Drive links as Photo URL
-   - copies sheet rows (columns A-H) to the clipboard and prints the cell to paste at
-   - prints suggested status changes from messages like `sold - green toys wagon` (apply by hand)
-4. Review the pasted rows. Takes ~2 min; each run re-asks Claude, so wording can vary.
+1. Forward the sale posts (photo + caption) into one dedicated WhatsApp chat.
+2. Phone: that chat > chat info > **Export Chat > Attach Media** > save the zip to the Mac.
+3. `python3 import_whatsapp.py ~/Downloads/"WhatsApp Chat - <name>.zip"` (`--dry` to preview)
+   - `claude -p` names/prices/categories each post, one item per photo for "any piece X shekels" posts,
+     crops photos showing several items, skips anything already listed, Room = `Clothes` for clothing
+   - suggests status/price changes from messages like `sold - green toys wagon`
+   - shows everything and asks before saving; photos go to Supabase storage (resized, no GPS)
 
-Export has no reactions and no reply context, so "sold" messages must name the item.
-
-Re-export the whole chat each time; photos already in the Drive folder are skipped.
+Re-export the whole chat each time; photos already uploaded are skipped.
 
 ## Updating the live site
 
@@ -74,14 +70,10 @@ then visit `http://localhost:8000`.
 ## Features
 
 - **Search** — fuzzy (typo/partial-tolerant), matches item/category/description in both languages.
-- **Filters** — status, category (auto-built from the sheet), price range (₪ min/max).
-- **Language toggle** (EN / עברית, top-right) — switches UI text and, if filled in, the `(HE)` columns; saved per-browser via localStorage. Switches the page to RTL in Hebrew.
-- **WhatsApp button** per item, pre-filled with the item name + price, sent to the shared number in `WHATSAPP_NUMBER` (near the top of `index.html`'s script). Hidden on Sold/Given Away items.
-- **Pickup info page** (`info.html`, linked from the header) — two maps (home / office) showing an approximate circle, not an exact pin, à la Airbnb. Coordinates are intentionally offset from the real address — see the `SPOTS` constant in `info.html` if you need to adjust them. Exact address is only shared once you've coordinated over WhatsApp.
+- **Filters** — status, category, room, price range (₪ min/max), available-by date; sort options.
+- **Language toggle** (EN / עברית) — switches UI text and the `*_he` columns when filled; RTL in Hebrew.
+- **WhatsApp button** per item, pre-filled with the item name + price (`WHATSAPP_NUMBER` in `index.html`). Hidden on Sold/Given Away.
+- **My list (cart)** — "+ Add to my list" on each card; floating "My list (n)" opens the list with a total and sends one WhatsApp message listing everything. Saved per-browser, no accounts; sold/deleted items drop off on next visit.
+- **Several photos per item** — first is the card cover (star a photo in the edit form to make it the cover); clicking a card shows all of them.
+- **Pickup info page** (`info.html`) — two maps showing an approximate circle, not an exact pin. Exact address only over WhatsApp.
 
-## You + your wife organizing
-
-Edit the same Google Sheet together (Sheets supports simultaneous editing). The site is read-only — it always reflects whatever's currently in the sheet.
-
-- skipped: photo upload UI — paste an already-hosted image link instead. Add an upload flow only if pasting links gets annoying.
-- skipped: automatic address reveal — pickup address is exchanged manually over WhatsApp, not published on the site, by design.

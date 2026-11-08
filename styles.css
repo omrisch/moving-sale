@@ -4,6 +4,7 @@
   --sale:#16a34a; --free:#2563eb; --gone:#9a9a9a; --soon:#d97706; --reserved:#7c3aed;
 }
 *{box-sizing:border-box;}
+[hidden]{display:none !important;}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);}
 header{position:relative;padding:28px 20px 20px;text-align:center;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;box-shadow:0 2px 12px rgba(0,0,0,.15);}
 header h1{margin:0 0 4px;font-size:1.7rem;}
@@ -48,6 +49,7 @@ html[dir="rtl"] .card,html[dir="rtl"] .filters button,html[dir="rtl"] .controls 
 .card{cursor:zoom-in;}
 #imgDialog{padding:0;border:none;border-radius:8px;background:transparent;max-width:90vw;max-height:90vh;}
 #imgDialog img{display:block;max-width:90vw;max-height:75vh;cursor:zoom-out;}
+#imgDialogPhotos{display:flex;flex-direction:column;gap:4px;}
 #imgDialogText{background:#fff;padding:12px 16px;max-width:min(90vw,600px);}
 #imgDialogText .desc{color:var(--muted);white-space:pre-line;}
 #imgDialog::backdrop{background:rgba(0,0,0,.7);}
@@ -78,3 +80,40 @@ main.info{max-width:800px;margin:0 auto;padding:24px 20px 48px;}
 .spot p{margin:0 0 12px;color:var(--muted);font-size:.9rem;}
 .map{height:260px;border-radius:8px;overflow:hidden;}
 .note{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;color:var(--muted);font-size:.9rem;}
+.card{position:relative;}
+.photo-count{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);color:#fff;font-size:.75rem;padding:2px 8px;border-radius:12px;}
+.cart-toggle{margin-top:6px;padding:7px;border-radius:8px;border:1px solid var(--accent);background:var(--card);color:var(--accent);font:inherit;font-size:.85rem;font-weight:600;cursor:pointer;}
+.cart-toggle.in-cart{background:var(--accent);color:#fff;}
+/* Fixed corner regardless of language, like .lang-toggle */
+.cart-btn{position:fixed;bottom:16px;right:16px;z-index:10;padding:12px 20px;border:none;border-radius:24px;background:var(--accent);color:#fff;font:inherit;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;}
+#cartDialog{border:none;border-radius:12px;padding:16px 20px;width:min(92vw,440px);}
+#cartDialog::backdrop{background:rgba(0,0,0,.5);}
+.cart-head{display:flex;justify-content:space-between;align-items:center;}
+.cart-head h3{margin:0;}
+.cart-head button,#cartList button{border:none;background:none;font-size:1rem;cursor:pointer;color:var(--muted);}
+#cartList{list-style:none;padding:0;margin:12px 0;}
+#cartList li{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);}
+#cartList li span:first-child{flex:1;}
+#cartTotal{font-weight:700;margin-bottom:8px;}
+.badge.inactive{background:#555;}
+/* admin */
+.admin-bar button,.admin-row button,.form-actions button{padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font:inherit;font-size:.85rem;cursor:pointer;}
+.admin-bar #addItemBtn,.form-actions button[type=submit]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+.admin-row{display:flex;gap:6px;margin-top:8px;}
+.admin-row select{flex:1;min-width:0;padding:6px;border-radius:8px;border:1px solid var(--border);font:inherit;font-size:.85rem;}
+.admin-row .admin-delete{color:#c0392b;}
+#loginDialog,#itemDialog{border:none;border-radius:12px;padding:16px 20px;width:min(94vw,480px);}
+#loginDialog::backdrop,#itemDialog::backdrop{background:rgba(0,0,0,.5);}
+.admin-form{display:flex;flex-direction:column;gap:10px;}
+.admin-form h3{margin:0;}
+.admin-form label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted);}
+.admin-form input,.admin-form select,.admin-form textarea{padding:8px 10px;border-radius:8px;border:1px solid var(--border);font:inherit;font-size:16px;color:var(--text);}
+#formPhotos{display:flex;flex-wrap:wrap;gap:8px;}
+.form-photo{position:relative;width:88px;height:88px;}
+.form-photo img{width:100%;height:100%;object-fit:cover;border-radius:8px;}
+.form-photo button,.cover-tag{position:absolute;top:4px;border:none;border-radius:10px;background:rgba(0,0,0,.6);color:#fff;font-size:.75rem;padding:2px 6px;cursor:pointer;}
+.form-photo [data-cover],.cover-tag{left:4px;}
+.form-photo [data-remove]{right:4px;}
+.form-error{color:#c0392b;font-size:.85rem;}
+.form-actions{display:flex;justify-content:flex-end;gap:8px;}
+.admin-login-btn{align-self:flex-end;border:none;background:none;color:var(--muted);font:inherit;font-size:.8rem;text-decoration:underline;cursor:pointer;padding:0;}
