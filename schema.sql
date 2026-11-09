@@ -89,3 +89,27 @@ comment on table public.pickups is
   'Moving-sale pickup/delivery calendar shown on pickups.html (admins only). One row per appointment. '
   'day/at are local Israel date/time, no timezone. place: Home (Ramat Gan) or Office (Tel Aviv, small items) '
   'or a delivery address. item_ids = ids from public.items; those items are set to Reserved automatically (trigger).';
+
+-- Pickup marked done -> its items become Sold. Safe to run whether or not the Reserved trigger above
+-- was run already (replaces it).
+create or replace function public.reserve_pickup_items() returns trigger language plpgsql as $$
+begin
+  if new.done then
+    update public.items set status = 'Sold'
+    where id = any(new.item_ids) and status in ('For Sale', 'Free', 'Available Soon', 'Reserved');
+  else
+    update public.items set status = 'Reserved'
+    where id = any(new.item_ids) and status in ('For Sale', 'Free', 'Available Soon');
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists reserve_pickup_items on public.pickups;
+create trigger reserve_pickup_items after insert or update of item_ids, done on public.pickups
+  for each row execute function public.reserve_pickup_items();
+
+comment on table public.pickups is
+  'Moving-sale pickup/delivery calendar shown on pickups.html (admins only). One row per appointment. '
+  'day/at are local Israel date/time, no timezone. place: Home (Ramat Gan) or Office (Tel Aviv, small items) '
+  'or a delivery address. item_ids = ids from public.items. Trigger: items become Reserved when added, '
+  'Sold when the row is marked done = true.';

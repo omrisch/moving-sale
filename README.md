@@ -45,7 +45,7 @@ Repo: **https://github.com/omrisch/moving-sale**
 Click a day to add, an entry to edit; each entry links to WhatsApp/call the buyer.
 Rows live in the `pickups` table (admins only, visitors can't read it). Any assistant with the Supabase
 connector can write it: one row per appointment, `day` + `at` are local Israel date/time, `item_ids`
-are `items.id`. Items on a pickup become Reserved automatically (database trigger), whoever adds the row.
+are `items.id`. Items on a pickup become Reserved automatically, and Sold once it is marked done (database trigger), whoever writes the row.
 
 ## Adding items from WhatsApp
 
