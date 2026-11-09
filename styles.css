@@ -131,9 +131,7 @@ main.info{max-width:800px;margin:0 auto;padding:24px 20px 48px;}
 .cal-nav button{padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font:inherit;cursor:pointer;}
 .cal-nav .primary{margin-left:auto;background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
-.cal-dow{font-size:.75rem;color:var(--muted);text-align:center;}
-.cal-day{background:var(--card);border-radius:8px;min-height:96px;padding:4px;cursor:pointer;display:flex;flex-direction:column;gap:3px;}
-.cal-day.other{opacity:.45;}
+.cal-day{background:var(--card);border-radius:8px;min-height:240px;padding:4px;cursor:pointer;display:flex;flex-direction:column;gap:3px;}
 .cal-day.today{outline:2px solid var(--accent);}
 .cal-date{font-size:.75rem;color:var(--muted);}
 .cal-entry{text-align:left;border:none;border-left:3px solid var(--sale);background:#f3f5fc;border-radius:4px;padding:3px 5px;font:inherit;font-size:.75rem;color:var(--text);cursor:pointer;}
@@ -149,12 +147,10 @@ main.info{max-width:800px;margin:0 auto;padding:24px 20px 48px;}
 #itemChecks small{color:var(--muted);}
 #pickupLinks{display:flex;gap:12px;align-items:center;}
 .form-actions .danger{margin-right:auto;color:#c0392b;}
-/* Phones: the month grid becomes an agenda, only days that have something (plus today). */
+/* Phones: the week becomes a vertical list of the 7 days. */
 @media (max-width:700px){
   .cal-grid{display:block;}
-  .cal-dow,.cal-day:not(.has):not(.today){display:none;}
   .cal-day{min-height:0;margin-bottom:6px;padding:8px;}
-  .cal-day.other{opacity:1;}
   .cal-date{font-weight:600;color:var(--text);}
   .cal-entry{font-size:.9rem;padding:6px 8px;}
 }

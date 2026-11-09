@@ -19,9 +19,9 @@
   <div id="notAdmin" hidden>Admins only. <a href="index.html">Log in on the listings page</a>, then come back.</div>
   <div id="cal" hidden>
     <div class="cal-nav">
-      <button id="prevMonth" aria-label="Previous month">‹</button>
-      <h2 id="monthTitle"></h2>
-      <button id="nextMonth" aria-label="Next month">›</button>
+      <button id="prevWeek" aria-label="Previous week">‹</button>
+      <h2 id="weekTitle"></h2>
+      <button id="nextWeek" aria-label="Next week">›</button>
       <button id="todayBtn">Today</button>
       <button id="addPickupBtn" class="primary">+ Add</button>
     </div>
@@ -64,7 +64,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const supabase = createClient("https://seuigtqgmjpmljbkgtur.supabase.co", "sb_publishable_Q0c-IvCCLF4e5-o5fs3ZXQ_4xwZZS2f");
 
 let pickups = [], items = [], editing = null;
-let month = new Date(); month.setDate(1);
+let start = new Date(); // first day shown; the board is 7 days from here
 
 // Dates are plain local "YYYY-MM-DD" strings end to end (no toISOString, which shifts to UTC).
 const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -73,17 +73,18 @@ const itemName = id => items.find(i => i.id === id)?.item || "(deleted item)";
 // Israeli local numbers (05x...) -> wa.me needs 972 and no leading 0
 const waNumber = p => { const d = (p || "").replace(/\D/g, ""); return d.startsWith("0") ? "972" + d.slice(1) : d; };
 
-function renderMonth() {
-  document.getElementById("monthTitle").textContent = month.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-  const start = new Date(month); start.setDate(1 - month.getDay()); // back to Sunday
+function renderWeek() {
+  const end = new Date(start); end.setDate(start.getDate() + 6);
+  const fmt = d => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  document.getElementById("weekTitle").textContent = `${fmt(start)} – ${fmt(end)}`;
   const today = ymd(new Date());
-  let html = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => `<div class="cal-dow">${d}</div>`).join("");
-  for (let i = 0; i < 42; i++) {
+  let html = "";
+  for (let i = 0; i < 7; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i);
     const key = ymd(d);
     // nulls (no time) sort first: "sometime that day"
     const dayPickups = pickups.filter(p => p.day === key).sort((a, b) => (a.at || "").localeCompare(b.at || ""));
-    const cls = ["cal-day", d.getMonth() !== month.getMonth() && "other", key === today && "today", dayPickups.length && "has"].filter(Boolean).join(" ");
+    const cls = ["cal-day", key === today && "today", dayPickups.length && "has"].filter(Boolean).join(" ");
     html += `<div class="${cls}" data-day="${key}">
       <div class="cal-date">${d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}</div>
       ${dayPickups.map(p => `<div class="cal-entry ${p.kind.toLowerCase()}${p.done ? " done" : ""}" data-id="${p.id}" role="button" tabindex="0">
@@ -157,9 +158,9 @@ document.getElementById("calGrid").onclick = e => {
   if (day) openForm(null, day.dataset.day);
 };
 document.getElementById("addPickupBtn").onclick = () => openForm(null);
-document.getElementById("prevMonth").onclick = () => { month.setMonth(month.getMonth() - 1); renderMonth(); };
-document.getElementById("nextMonth").onclick = () => { month.setMonth(month.getMonth() + 1); renderMonth(); };
-document.getElementById("todayBtn").onclick = () => { month = new Date(); month.setDate(1); renderMonth(); };
+document.getElementById("prevWeek").onclick = () => { start.setDate(start.getDate() - 7); renderWeek(); };
+document.getElementById("nextWeek").onclick = () => { start.setDate(start.getDate() + 7); renderWeek(); };
+document.getElementById("todayBtn").onclick = () => { start = new Date(); renderWeek(); };
 
 async function load() {
   const [p, i] = await Promise.all([
@@ -168,7 +169,7 @@ async function load() {
   ]);
   if (p.error || i.error) return alert(`Couldn't load: ${(p.error || i.error).message}`);
   pickups = p.data; items = i.data;
-  renderMonth();
+  renderWeek();
 }
 
 // ponytail: realtime subscription skipped; refresh when the tab comes back into view, which is
