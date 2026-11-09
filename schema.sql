@@ -72,3 +72,20 @@ grant select, insert, update, delete on public.pickups to authenticated;
 create policy "Admins do everything" on public.pickups for all to authenticated
   using ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   with check ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+-- Items on a pickup/delivery become Reserved automatically, whoever writes the row (page, WhatsApp
+-- assistant, SQL). Only items still available; Sold / Given Away / Inactive are left alone.
+create function public.reserve_pickup_items() returns trigger language plpgsql as $$
+begin
+  update public.items set status = 'Reserved'
+  where id = any(new.item_ids) and status in ('For Sale', 'Free', 'Available Soon');
+  return new;
+end $$;
+
+create trigger reserve_pickup_items after insert or update of item_ids on public.pickups
+  for each row execute function public.reserve_pickup_items();
+
+comment on table public.pickups is
+  'Moving-sale pickup/delivery calendar shown on pickups.html (admins only). One row per appointment. '
+  'day/at are local Israel date/time, no timezone. place: Home (Ramat Gan) or Office (Tel Aviv, small items) '
+  'or a delivery address. item_ids = ids from public.items; those items are set to Reserved automatically (trigger).';
