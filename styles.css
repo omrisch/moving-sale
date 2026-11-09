@@ -123,3 +123,38 @@ main.info{max-width:800px;margin:0 auto;padding:24px 20px 48px;}
 .form-error{color:#c0392b;font-size:.85rem;}
 .form-actions{display:flex;justify-content:flex-end;gap:8px;}
 .admin-login-btn{align-self:flex-end;border:none;background:none;color:var(--muted);font:inherit;font-size:.8rem;text-decoration:underline;cursor:pointer;padding:0;}
+/* pickups.html (admin calendar) */
+.admin-link{padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:.85rem;text-decoration:none;}
+.pickups{max-width:1200px;margin:0 auto;padding:16px 20px;}
+.cal-nav{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+.cal-nav h2{margin:0 8px;font-size:1.2rem;min-width:9em;}
+.cal-nav button{padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font:inherit;cursor:pointer;}
+.cal-nav .primary{margin-left:auto;background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.cal-dow{font-size:.75rem;color:var(--muted);text-align:center;}
+.cal-day{background:var(--card);border-radius:8px;min-height:96px;padding:4px;cursor:pointer;display:flex;flex-direction:column;gap:3px;}
+.cal-day.other{opacity:.45;}
+.cal-day.today{outline:2px solid var(--accent);}
+.cal-date{font-size:.75rem;color:var(--muted);}
+.cal-entry{text-align:left;border:none;border-left:3px solid var(--sale);background:#f3f5fc;border-radius:4px;padding:3px 5px;font:inherit;font-size:.75rem;color:var(--text);cursor:pointer;}
+.cal-entry.delivery{border-left-color:var(--soon);}
+.cal-entry.done{opacity:.5;text-decoration:line-through;}
+.cal-entry small{display:block;color:var(--muted);}
+#pickupDialog{border:none;border-radius:12px;padding:16px 20px;width:min(94vw,520px);}
+#pickupDialog::backdrop{background:rgba(0,0,0,.5);}
+.form-row{display:flex;gap:8px;}
+.form-row label{flex:1;min-width:0;}
+.admin-form label.check{flex-direction:row;align-items:center;gap:6px;color:var(--text);}
+#itemChecks{max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px;}
+#itemChecks small{color:var(--muted);}
+#pickupLinks{display:flex;gap:12px;align-items:center;}
+.form-actions .danger{margin-right:auto;color:#c0392b;}
+/* Phones: the month grid becomes an agenda, only days that have something (plus today). */
+@media (max-width:700px){
+  .cal-grid{display:block;}
+  .cal-dow,.cal-day:not(.has):not(.today){display:none;}
+  .cal-day{min-height:0;margin-bottom:6px;padding:8px;}
+  .cal-day.other{opacity:1;}
+  .cal-date{font-weight:600;color:var(--text);}
+  .cal-entry{font-size:.9rem;padding:6px 8px;}
+}

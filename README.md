@@ -10,6 +10,7 @@ Repo: **https://github.com/omrisch/moving-sale**
 
 - `index.html` — the item listing (search, filters, cart, WhatsApp contact) + admin login/forms
 - `info.html` — pickup logistics page (approximate location maps)
+- `pickups.html` — **admin-only** calendar of pickups/deliveries (when, where, who, which items); `pickups` table in `schema.sql`
 - `styles.css` — shared styling for both pages
 - `schema.sql` — the database: `items` table, photo bucket, and the rules (visitors read, admins write)
 - `supa.py` — tiny Supabase client for the local scripts (reads `.env`)
@@ -37,6 +38,14 @@ Repo: **https://github.com/omrisch/moving-sale**
 3. `psql "$DATABASE_URL" -f schema.sql`
 4. Authentication > Sign In / Providers: turn off "Allow new users to sign up". Users > Add user for
    each admin, then: `update auth.users set raw_app_meta_data = raw_app_meta_data || '{"role":"admin"}' where email = '...';`
+
+## Pickups calendar
+
+`pickups.html` ("Pickups" button in the admin bar). Month grid on desktop, agenda list on phones.
+Click a day to add, an entry to edit; each entry links to WhatsApp/call the buyer.
+Rows live in the `pickups` table (admins only, visitors can't read it). Any assistant with the Supabase
+connector can write it: one row per appointment, `day` + `at` are local Israel date/time, `item_ids`
+are `items.id`. The table comment tells the assistant this, plus to set those items to Reserved.
 
 ## Adding items from WhatsApp
 

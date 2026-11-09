@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Moving Sale — Pickups</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!-- Admin only, English only: it's just us. Rows are in the pickups table (schema.sql), mostly
+     written by the WhatsApp assistant; this page reads them and allows manual edits. -->
+<header>
+  <a class="nav-link" href="index.html">Back to listings</a>
+  <h1>Pickups &amp; deliveries</h1>
+  <p id="subtitle">Who comes when, where, for what.</p>
+</header>
+
+<main class="pickups">
+  <div id="notAdmin" hidden>Admins only. <a href="index.html">Log in on the listings page</a>, then come back.</div>
+  <div id="cal" hidden>
+    <div class="cal-nav">
+      <button id="prevMonth" aria-label="Previous month">‹</button>
+      <h2 id="monthTitle"></h2>
+      <button id="nextMonth" aria-label="Next month">›</button>
+      <button id="todayBtn">Today</button>
+      <button id="addPickupBtn" class="primary">+ Add</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+</main>
+
+<dialog id="pickupDialog">
+  <form id="pickupForm" class="admin-form">
+    <h3 id="pickupFormTitle">Add pickup</h3>
+    <div class="form-row">
+      <label>Date<input name="day" type="date" required></label>
+      <label>Time<input name="at" type="time"></label>
+    </div>
+    <div class="form-row">
+      <label>Type<select name="kind"><option>Pickup</option><option>Delivery</option></select></label>
+      <label>Where<input name="place" list="placeList" placeholder="Home / Office / address"></label>
+    </div>
+    <div class="form-row">
+      <label>Name<input name="contact_name"></label>
+      <label>Phone<input name="contact_phone" type="tel"></label>
+    </div>
+    <label>Items<input type="search" id="itemFilter" placeholder="Filter items…"></label>
+    <div id="itemChecks"></div>
+    <label>Notes<textarea name="notes" rows="2"></textarea></label>
+    <label class="check"><input name="done" type="checkbox"> Done</label>
+    <div id="pickupLinks"></div>
+    <div class="form-error" id="pickupError"></div>
+    <div class="form-actions">
+      <button type="button" id="pickupDelete" class="danger">Delete</button>
+      <button type="button" data-close>Cancel</button>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+  <datalist id="placeList"><option value="Home"><option value="Office"></datalist>
+</dialog>
+
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
+const supabase = createClient("https://seuigtqgmjpmljbkgtur.supabase.co", "sb_publishable_Q0c-IvCCLF4e5-o5fs3ZXQ_4xwZZS2f");
+
+let pickups = [], items = [], editing = null;
+let month = new Date(); month.setDate(1);
+
+// Dates are plain local "YYYY-MM-DD" strings end to end (no toISOString, which shifts to UTC).
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const itemName = id => items.find(i => i.id === id)?.item || "(deleted item)";
+// Israeli local numbers (05x...) -> wa.me needs 972 and no leading 0
+const waNumber = p => { const d = (p || "").replace(/\D/g, ""); return d.startsWith("0") ? "972" + d.slice(1) : d; };
+
+function renderMonth() {
+  document.getElementById("monthTitle").textContent = month.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  const start = new Date(month); start.setDate(1 - month.getDay()); // back to Sunday
+  const today = ymd(new Date());
+  let html = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => `<div class="cal-dow">${d}</div>`).join("");
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    const key = ymd(d);
+    // nulls (no time) sort first: "sometime that day"
+    const dayPickups = pickups.filter(p => p.day === key).sort((a, b) => (a.at || "").localeCompare(b.at || ""));
+    const cls = ["cal-day", d.getMonth() !== month.getMonth() && "other", key === today && "today", dayPickups.length && "has"].filter(Boolean).join(" ");
+    html += `<div class="${cls}" data-day="${key}">
+      <div class="cal-date">${d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}</div>
+      ${dayPickups.map(p => `<button class="cal-entry ${p.kind.toLowerCase()}${p.done ? " done" : ""}" data-id="${p.id}">
+        <b>${p.at ? p.at.slice(0, 5) : "—"}</b> ${esc(p.contact_name || "?")}${p.place ? ` · ${esc(p.place)}` : ""}
+        ${p.item_ids.length ? `<small>${esc(p.item_ids.map(itemName).join(", "))}</small>` : ""}
+      </button>`).join("")}
+    </div>`;
+  }
+  document.getElementById("calGrid").innerHTML = html;
+}
+
+function renderItemChecks(selected) {
+  const q = document.getElementById("itemFilter").value.toLowerCase();
+  // Show items that are still around, plus anything already on this pickup
+  document.getElementById("itemChecks").innerHTML = items
+    .filter(i => selected.includes(i.id) || (!["Sold", "Given Away", "Inactive"].includes(i.status) && i.item.toLowerCase().includes(q)))
+    .map(i => `<label class="check"><input type="checkbox" value="${i.id}"${selected.includes(i.id) ? " checked" : ""}> ${esc(i.item)} <small>${esc(i.status)}</small></label>`).join("");
+}
+const checkedItems = () => [...document.querySelectorAll("#itemChecks input:checked")].map(c => c.value);
+document.getElementById("itemFilter").oninput = () => renderItemChecks(checkedItems());
+
+function openForm(p, day) {
+  editing = p;
+  const form = document.getElementById("pickupForm");
+  form.reset();
+  document.getElementById("pickupFormTitle").textContent = p ? "Edit" : "Add pickup";
+  document.getElementById("pickupError").textContent = "";
+  document.getElementById("pickupDelete").hidden = !p;
+  form.day.value = p?.day || day || ymd(new Date());
+  if (p) {
+    form.at.value = p.at ? p.at.slice(0, 5) : ""; form.kind.value = p.kind; form.place.value = p.place || "";
+    form.contact_name.value = p.contact_name || ""; form.contact_phone.value = p.contact_phone || "";
+    form.notes.value = p.notes || ""; form.done.checked = p.done;
+  }
+  const phone = waNumber(p?.contact_phone);
+  document.getElementById("pickupLinks").innerHTML = phone
+    ? `<a class="wa-btn" href="https://wa.me/${phone}" target="_blank" rel="noopener">WhatsApp ${esc(p.contact_name || "")}</a> <a href="tel:${esc(p.contact_phone)}">Call</a>` : "";
+  renderItemChecks(p?.item_ids || []);
+  document.getElementById("pickupDialog").showModal();
+}
+
+document.getElementById("pickupForm").onsubmit = async e => {
+  e.preventDefault();
+  const form = e.target, v = n => form[n].value.trim() || null;
+  const row = {
+    day: form.day.value, at: v("at"), kind: form.kind.value, place: v("place"),
+    contact_name: v("contact_name"), contact_phone: v("contact_phone"), notes: v("notes"),
+    done: form.done.checked, item_ids: checkedItems(),
+  };
+  const q = editing ? supabase.from("pickups").update(row).eq("id", editing.id) : supabase.from("pickups").insert(row);
+  const { data, error } = await q.select("id");
+  if (error || !data.length) return document.getElementById("pickupError").textContent = error?.message || "Not saved. Try logging in again.";
+  document.getElementById("pickupDialog").close();
+  load();
+};
+document.getElementById("pickupDelete").onclick = async () => {
+  if (!confirm("Delete this appointment?")) return;
+  const { error } = await supabase.from("pickups").delete().eq("id", editing.id);
+  if (error) return alert(error.message);
+  document.getElementById("pickupDialog").close();
+  load();
+};
+document.querySelector("[data-close]").onclick = () => document.getElementById("pickupDialog").close();
+
+document.getElementById("calGrid").onclick = e => {
+  const entry = e.target.closest(".cal-entry");
+  if (entry) return openForm(pickups.find(p => p.id === entry.dataset.id));
+  const day = e.target.closest(".cal-day");
+  if (day) openForm(null, day.dataset.day);
+};
+document.getElementById("addPickupBtn").onclick = () => openForm(null);
+document.getElementById("prevMonth").onclick = () => { month.setMonth(month.getMonth() - 1); renderMonth(); };
+document.getElementById("nextMonth").onclick = () => { month.setMonth(month.getMonth() + 1); renderMonth(); };
+document.getElementById("todayBtn").onclick = () => { month = new Date(); month.setDate(1); renderMonth(); };
+
+async function load() {
+  const [p, i] = await Promise.all([
+    supabase.from("pickups").select("*").order("day"),
+    supabase.from("items").select("id,item,status").order("item"),
+  ]);
+  if (p.error || i.error) return alert(`Couldn't load: ${(p.error || i.error).message}`);
+  pickups = p.data; items = i.data;
+  renderMonth();
+}
+
+// ponytail: realtime subscription skipped; refresh when the tab comes back into view, which is
+// when updates made from WhatsApp matter.
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !document.getElementById("cal").hidden) load(); });
+
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const isAdmin = session?.user?.app_metadata?.role === "admin";
+  document.getElementById(isAdmin ? "cal" : "notAdmin").hidden = false;
+  if (isAdmin) load();
+})();
+
+console.assert(waNumber("054-123 4567") === "972541234567","waNumber: local 05x -> 972");
+console.assert(waNumber("+972 54 123 4567") === "972541234567", "waNumber: already international");
+console.assert(ymd(new Date(2026, 0, 5)) === "2026-01-05", "ymd: local date, zero-padded");
+</script>
+</body>
+</html>

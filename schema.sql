@@ -44,3 +44,31 @@ values ('item-photos', 'item-photos', true, 5242880, array['image/webp', 'image/
 create policy "Admins manage item photos" on storage.objects for all to authenticated
   using (bucket_id = 'item-photos' and (select auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   with check (bucket_id = 'item-photos' and (select auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+-- ---------- Pickups / deliveries (added 2026-11-09) ----------
+-- Admin-only: holds buyers' names and phones, so visitors can't read it at all.
+-- Written mostly by an assistant from WhatsApp chats, sometimes by hand on pickups.html.
+create table public.pickups (
+  id uuid primary key default gen_random_uuid(),
+  day date not null,                                    -- local Israel date
+  at time,                                              -- local Israel time; null = "sometime that day"
+  kind text not null default 'Pickup' check (kind in ('Pickup', 'Delivery')),
+  place text,                                           -- 'Home', 'Office', or a delivery address
+  contact_name text,
+  contact_phone text,                                   -- e.g. 0541234567 or +972541234567
+  item_ids uuid[] not null default '{}',                -- items.id of what they're taking
+  notes text,                                           -- anything else, incl. items not listed on the site
+  done boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+comment on table public.pickups is
+  'Moving-sale pickup/delivery calendar shown on pickups.html (admins only). One row per appointment. '
+  'day/at are local Israel date/time, no timezone. place: Home (Ramat Gan) or Office (Tel Aviv, small items) '
+  'or a delivery address. item_ids = ids from public.items; when a pickup is agreed, also set those items to Reserved.';
+
+alter table public.pickups enable row level security;
+grant select, insert, update, delete on public.pickups to authenticated;
+create policy "Admins do everything" on public.pickups for all to authenticated
+  using ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
+  with check ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
