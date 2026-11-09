@@ -158,3 +158,5 @@ main.info{max-width:800px;margin:0 auto;padding:24px 20px 48px;}
   .cal-date{font-weight:600;color:var(--text);}
   .cal-entry{font-size:.9rem;padding:6px 8px;}
 }
+.cal-phone{display:block;color:#128C7E;font-weight:600;text-decoration:none;}
+.cal-phone::before{content:"💬 ";}

@@ -86,10 +86,11 @@ function renderMonth() {
     const cls = ["cal-day", d.getMonth() !== month.getMonth() && "other", key === today && "today", dayPickups.length && "has"].filter(Boolean).join(" ");
     html += `<div class="${cls}" data-day="${key}">
       <div class="cal-date">${d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}</div>
-      ${dayPickups.map(p => `<button class="cal-entry ${p.kind.toLowerCase()}${p.done ? " done" : ""}" data-id="${p.id}">
+      ${dayPickups.map(p => `<div class="cal-entry ${p.kind.toLowerCase()}${p.done ? " done" : ""}" data-id="${p.id}" role="button" tabindex="0">
         <b>${p.at ? p.at.slice(0, 5) : "—"}</b> ${esc(p.contact_name || "?")}${p.place ? ` · ${esc(p.place)}` : ""}
+        ${p.contact_phone ? `<a class="cal-phone" href="https://wa.me/${waNumber(p.contact_phone)}" target="_blank" rel="noopener">${esc(p.contact_phone)}</a>` : ""}
         ${p.item_ids.length ? `<small>${esc(p.item_ids.map(itemName).join(", "))}</small>` : ""}
-      </button>`).join("")}
+      </div>`).join("")}
     </div>`;
   }
   document.getElementById("calGrid").innerHTML = html;
@@ -149,6 +150,7 @@ document.getElementById("pickupDelete").onclick = async () => {
 document.querySelector("[data-close]").onclick = () => document.getElementById("pickupDialog").close();
 
 document.getElementById("calGrid").onclick = e => {
+  if (e.target.closest(".cal-phone")) return; // let the WhatsApp link open, don't open the edit form
   const entry = e.target.closest(".cal-entry");
   if (entry) return openForm(pickups.find(p => p.id === entry.dataset.id));
   const day = e.target.closest(".cal-day");
