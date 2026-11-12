@@ -439,9 +439,11 @@ function render(items, filters, lang) {
     // Available now first, then reserved, coming soon, gone; newest sheet rows first within each
     const rank = { "For Sale": 0, "Free": 0, "Reserved": 1, "Available Soon": 2, "Sold": 3, "Given Away": 3 };
     filtered.sort((a, b) => (rank[a.Status] ?? 2) - (rank[b.Status] ?? 2) || b._row - a._row);
-    // Sprinkle sold items in (every 4th card) so the first screen shows things moving, not just stock.
+    // Sprinkle sold items in so the first screen shows things moving, not just stock. A sold item
+    // follows ~1 in 4 live items, picked by the live item's uuid: scattered (no fixed column) but
+    // stable across re-renders.
     const gone = filtered.filter(isClaimed), live = filtered.filter(it => !isClaimed(it));
-    filtered = live.flatMap((it, i) => i % 3 === 2 && gone.length ? [it, gone.shift()] : [it]).concat(gone);
+    filtered = live.flatMap(it => parseInt(it.id.slice(0, 8), 16) % 4 === 0 && gone.length ? [it, gone.shift()] : [it]).concat(gone);
   }
   grid.innerHTML = "";
   empty.style.display = filtered.length ? "none" : "block";
