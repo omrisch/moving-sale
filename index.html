@@ -143,6 +143,7 @@ const I18N = {
     error: "Couldn't load the list. Try again in a minute.",
     empty: "No items match.",
     freePrice: "Free",
+    newBadge: "New",
     whatsapp: "Message on WhatsApp",
     infoLink: "Pickup info",
     allStatuses: "All statuses",
@@ -185,6 +186,7 @@ const I18N = {
     error: "טעינת הרשימה נכשלה. נסו שוב בעוד דקה.",
     empty: "לא נמצאו פריטים מתאימים.",
     freePrice: "ללא תשלום",
+    newBadge: "חדש",
     whatsapp: "שליחת הודעה בוואטסאפ",
     infoLink: "מידע על איסוף",
     allStatuses: "כל הסטטוסים",
@@ -250,6 +252,7 @@ function toItem(r, i) {
     Category: r.category || "", "Category (HE)": r.category_he || "",
     Description: r.description || "", "Description (HE)": r.description_he || "",
     Price: r.price == null ? "" : String(r.price), Date: r.available_from || "",
+    created: r.created_at,
   };
 }
 
@@ -273,6 +276,10 @@ function formatDescription(desc, lang) {
 
 const priceText = (it, lang) => it.Status === "Free" ? I18N[lang].freePrice : (it.Price ? `₪${it.Price}` : "");
 const isClaimed = it => it.Status === "Sold" || it.Status === "Given Away";
+// NEW badge: added in the last 7 days. ponytail: rows from before LAUNCH are the one-time sheet
+// copy (all stamped 2026-11-07), not new arrivals; the cutoff is moot after 2026-11-14.
+const LAUNCH = Date.parse("2026-11-08"), WEEK_MS = 7 * 864e5;
+const isNew = it => !isClaimed(it) && Date.parse(it.created) >= Math.max(LAUNCH, Date.now() - WEEK_MS);
 const waUrl = msg => `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
 
 function whatsappLink(it, lang) {
@@ -353,6 +360,7 @@ function buildCard(it, lang) {
   card.innerHTML = `
     ${photos.length ? `<img src="${photos[0]}" alt="${name}" loading="lazy" class="thumb" onerror="this.remove()">` : ""}
     ${photos.length > 1 ? `<span class="photo-count">${photos.length} 📷</span>` : ""}
+    ${isNew(it) ? `<span class="new-ribbon">${t.newBadge}</span>` : ""}
     <div class="body">
       <h3>${name}</h3>
       ${category ? `<div class="cat">${category}</div>` : ""}
@@ -397,7 +405,7 @@ function render(items, filters, lang) {
   const min = filters.priceMin === "" ? null : parseFloat(filters.priceMin);
   const max = filters.priceMax === "" ? null : parseFloat(filters.priceMax);
   const dateMax = filters.dateMax ? new Date(filters.dateMax) : null;
-  const filtered = items.filter(it => {
+  let filtered = items.filter(it => {
     if (filters.status !== "All" && it.Status !== filters.status) return false;
     if (filters.category !== "All" && it.Category !== filters.category) return false;
     if (filters.room !== "All" && it.Room !== filters.room) return false;
@@ -431,6 +439,9 @@ function render(items, filters, lang) {
     // Available now first, then reserved, coming soon, gone; newest sheet rows first within each
     const rank = { "For Sale": 0, "Free": 0, "Reserved": 1, "Available Soon": 2, "Sold": 3, "Given Away": 3 };
     filtered.sort((a, b) => (rank[a.Status] ?? 2) - (rank[b.Status] ?? 2) || b._row - a._row);
+    // Sprinkle sold items in (every 4th card) so the first screen shows things moving, not just stock.
+    const gone = filtered.filter(isClaimed), live = filtered.filter(it => !isClaimed(it));
+    filtered = live.flatMap((it, i) => i % 3 === 2 && gone.length ? [it, gone.shift()] : [it]).concat(gone);
   }
   grid.innerHTML = "";
   empty.style.display = filtered.length ? "none" : "block";

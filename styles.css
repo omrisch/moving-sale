@@ -162,3 +162,4 @@ main.info{max-width:800px;margin:0 auto;padding:24px 20px 48px;}
 .pickup-opt span{font-size:.85rem;color:var(--muted);}
 #pickupMap{display:block;margin-top:12px;text-align:center;font-size:.85rem;color:var(--muted);}
 .pickup-opt[data-place=other]{border-style:dashed;border-color:var(--border);}
+.new-ribbon{position:absolute;top:8px;right:8px;z-index:1;background:#ff3d71;color:#fff;font-size:.75rem;font-weight:700;padding:4px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em;box-shadow:0 2px 6px rgba(0,0,0,.25);}
