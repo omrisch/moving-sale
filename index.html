@@ -72,6 +72,14 @@
   <div id="cartTotal"></div>
   <a id="cartSend" class="wa-btn" target="_blank" rel="noopener"></a>
 </dialog>
+<!-- Every WhatsApp button goes through this: pick a pickup spot, it's added to the message. -->
+<dialog id="pickupDialog">
+  <div class="cart-head"><h3 id="pickupTitle"></h3><button data-close aria-label="Close">✕</button></div>
+  <a class="pickup-opt" data-place="home" target="_blank" rel="noopener"></a>
+  <a class="pickup-opt" data-place="office" target="_blank" rel="noopener"></a>
+  <a class="pickup-opt" data-place="other" target="_blank" rel="noopener"></a>
+  <a id="pickupMap" href="info.html" target="_blank"></a>
+</dialog>
 <!-- Admin only. English-only on purpose: it's just us. -->
 <dialog id="loginDialog">
   <form id="loginForm" class="admin-form">
@@ -160,6 +168,12 @@ const I18N = {
     cartTotal: "Total",
     cartSend: "Send list on WhatsApp",
     waList: (lines, total) => `Hi! I'm interested in these from the moving sale:\n${lines}\n\nTotal: ${total}. Are they still available?`,
+    pickupTitle: "Where would you pick up?",
+    pickupHome: ["Ramat Gan", "near Sderot HaTzanhanim · most items"],
+    pickupOffice: ["Tel Aviv", "near Sarona · small items only"],
+    pickupOther: ["Something else", "delivery, another place or time, ask us"],
+    pickupMap: "See both on a map",
+    waPickup: { home: "I'd pick up in Ramat Gan (near Sderot HaTzanhanim).", office: "I'd pick up in Tel Aviv (near Sarona).", other: "Neither pickup spot works for me, could we arrange something else?" },
   },
   he: {
     dir: "rtl",
@@ -196,6 +210,12 @@ const I18N = {
     cartTotal: "סה״כ",
     cartSend: "שליחת הרשימה בוואטסאפ",
     waList: (lines, total) => `היי! מתעניין/ת בפריטים האלה ממכירת המעבר:\n${lines}\n\nסה״כ: ${total}. הם עדיין קיימים?`,
+    pickupTitle: "איפה נוח לך לאסוף?",
+    pickupHome: ["רמת גן", "ליד שדרות הצנחנים · רוב הפריטים"],
+    pickupOffice: ["תל אביב", "ליד שרונה · פריטים קטנים בלבד"],
+    pickupOther: ["משהו אחר", "משלוח, מקום או זמן אחר, תשאלו אותנו"],
+    pickupMap: "לראות את שניהם על מפה",
+    waPickup: { home: "אאסוף ברמת גן (ליד שדרות הצנחנים).", office: "אאסוף בתל אביב (ליד שרונה).", other: "שתי נקודות האיסוף לא מתאימות לי, אפשר לתאם משהו אחר?" },
   },
 };
 
@@ -483,12 +503,6 @@ document.getElementById("grid").addEventListener("click", e => {
   if (e.target.closest(".admin-edit")) return openItemForm(card._item);
   if (e.target.closest(".admin-delete")) return deleteItem(card._item);
   if (card && !e.target.closest("a, select, button")) return openItemView(card._item);
-  // ponytail: global cooldown, not per-button — deters rapid repeat WhatsApp clicks, not real spam
-  if (e.target.classList.contains("wa-btn")) {
-    const now = Date.now();
-    if (now - lastWaClick < WA_COOLDOWN_MS) { e.preventDefault(); return; }
-    lastWaClick = now;
-  }
 });
 // Admin status change: saved straight to the database, card updated in place.
 document.getElementById("grid").addEventListener("change", async e => {
@@ -508,8 +522,26 @@ document.getElementById("grid").addEventListener("change", async e => {
     sel.disabled = false;
   }
 });
-let lastWaClick = 0;
-const WA_COOLDOWN_MS = 3000;
+// Any WhatsApp button (card, item view, cart) asks for a pickup spot first; the choice is
+// appended to that button's message. Its own href stays as the no-JS fallback.
+document.addEventListener("click", e => {
+  const wa = e.target.closest(".wa-btn");
+  if (!wa) return;
+  e.preventDefault();
+  const t = I18N[renderState.lang], msg = new URL(wa.href).searchParams.get("text");
+  const dlg = document.getElementById("pickupDialog");
+  document.getElementById("pickupTitle").textContent = t.pickupTitle;
+  document.getElementById("pickupMap").textContent = t.pickupMap;
+  dlg.querySelectorAll(".pickup-opt").forEach(a => {
+    const p = a.dataset.place, [name, note] = { home: t.pickupHome, office: t.pickupOffice, other: t.pickupOther }[p];
+    a.innerHTML = `<b>${name}</b><span>${note}</span>`;
+    a.href = waUrl(`${msg}\n${t.waPickup[p]}`);
+  });
+  dlg.showModal();
+});
+document.getElementById("pickupDialog").addEventListener("click", e => {
+  if (e.target === e.currentTarget || e.target.closest(".pickup-opt")) e.currentTarget.close();
+});
 document.getElementById("cartBtn").onclick = () => { renderCart(); document.getElementById("cartDialog").showModal(); };
 document.getElementById("cartClose").onclick = () => document.getElementById("cartDialog").close();
 document.getElementById("cartDialog").addEventListener("click", e => {

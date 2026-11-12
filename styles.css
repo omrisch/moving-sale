@@ -92,8 +92,8 @@ main.info{max-width:800px;margin:0 auto;padding:24px 20px 48px;}
 .cart-toggle.in-cart{background:var(--accent);color:#fff;}
 /* Fixed corner regardless of language, like .lang-toggle */
 .cart-btn{position:fixed;bottom:16px;right:16px;z-index:10;padding:12px 20px;border:none;border-radius:24px;background:var(--accent);color:#fff;font:inherit;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;}
-#cartDialog{border:none;border-radius:12px;padding:16px 20px;width:min(92vw,440px);}
-#cartDialog::backdrop{background:rgba(0,0,0,.5);}
+#cartDialog,#pickupDialog{border:none;border-radius:12px;padding:16px 20px;width:min(92vw,440px);}
+#cartDialog::backdrop,#pickupDialog::backdrop{background:rgba(0,0,0,.5);}
 .cart-head{display:flex;justify-content:space-between;align-items:center;}
 .cart-head h3{margin:0;}
 .cart-head button,#cartList button{border:none;background:none;font-size:1rem;cursor:pointer;color:var(--muted);}
@@ -156,3 +156,9 @@ main.info{max-width:800px;margin:0 auto;padding:24px 20px 48px;}
 }
 .cal-phone{display:block;color:#128C7E;font-weight:600;text-decoration:none;}
 .cal-phone::before{content:"💬 ";}
+.pickup-opt{display:block;margin-top:10px;padding:12px 14px;border:2px solid #25D366;border-radius:10px;color:inherit;text-decoration:none;}
+.pickup-opt:hover{background:#25D36618;}
+.pickup-opt b{display:block;font-size:1rem;}
+.pickup-opt span{font-size:.85rem;color:var(--muted);}
+#pickupMap{display:block;margin-top:12px;text-align:center;font-size:.85rem;color:var(--muted);}
+.pickup-opt[data-place=other]{border-style:dashed;border-color:var(--border);}
