@@ -153,7 +153,7 @@ const I18N = {
     availableFrom: date => `Available from ${date}`,
     dateLabel: "Available by:",
     sortLabel: "Sort:",
-    sortDefault: "Newest available first",
+    sortDefault: "Available first",
     sortPriceAsc: "Price (low→high)",
     sortPriceDesc: "Price (high→low)",
     sortName: "Name (A→Z)",
@@ -196,7 +196,7 @@ const I18N = {
     availableFrom: date => `זמין החל מ-${date}`,
     dateLabel: "זמין עד תאריך:",
     sortLabel: "מיון:",
-    sortDefault: "חדש וזמין קודם",
+    sortDefault: "זמין קודם",
     sortPriceAsc: "מחיר (נמוך לגבוה)",
     sortPriceDesc: "מחיר (גבוה לנמוך)",
     sortName: "שם (א-ת)",
@@ -436,9 +436,11 @@ function render(items, filters, lang) {
     const gone = it => it.Status === "Sold" || it.Status === "Given Away";
     filtered.sort((a, b) => gone(a) - gone(b) || (price(a) === null) - (price(b) === null) || dir * (price(a) - price(b)));
   } else {
-    // Available now first, then reserved, coming soon, gone; newest sheet rows first within each
+    // Available now first, then reserved, coming soon, gone. Within each: a fixed shuffle (by uuid)
+    // so NEW items mix in with older ones instead of all sitting on top.
     const rank = { "For Sale": 0, "Free": 0, "Reserved": 1, "Available Soon": 2, "Sold": 3, "Given Away": 3 };
-    filtered.sort((a, b) => (rank[a.Status] ?? 2) - (rank[b.Status] ?? 2) || b._row - a._row);
+    const shuffleKey = it => parseInt(it.id.slice(9, 13), 16);
+    filtered.sort((a, b) => (rank[a.Status] ?? 2) - (rank[b.Status] ?? 2) || shuffleKey(a) - shuffleKey(b));
     // Sprinkle sold items in so the first screen shows things moving, not just stock. A sold item
     // follows ~1 in 4 live items, picked by the live item's uuid: scattered (no fixed column) but
     // stable across re-renders.
